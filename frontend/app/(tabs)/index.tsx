@@ -38,7 +38,9 @@ import {
 import { EditShiftSheet, EditShiftSheetRef } from "@/src/components/edit-shift-sheet";
 import { EventSheet, EventSheetRef } from "@/src/components/event-sheet";
 import { DayActionsSheet, DayActionsSheetRef } from "@/src/components/day-actions-sheet";
-import { Linking } from "react-native";
+import { Alert, Linking, Platform } from "react-native";
+import { captureRef } from "react-native-view-shot";
+import * as Sharing from "expo-sharing";
 
 type DayEvent =
   | {
@@ -68,6 +70,7 @@ export default function CalendarScreen() {
   const editRef = useRef<EditShiftSheetRef>(null);
   const eventRef = useRef<EventSheetRef>(null);
   const actionsRef = useRef<DayActionsSheetRef>(null);
+  const captureViewRef = useRef<View>(null);
 
   const load = async () => {
     setLoading(true);
@@ -177,7 +180,7 @@ export default function CalendarScreen() {
   const nextMonth = () =>
     month === 11 ? (setYear(year + 1), setMonth(0)) : setMonth(month + 1);
 
-  const shareMonth = async () => {
+  const shareTextOnWhatsApp = async () => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const lines: string[] = [];
     lines.push(`📅 *Escala de ${MONTHS_PT[month]}/${year}*`);
@@ -193,7 +196,6 @@ export default function CalendarScreen() {
         if (ev.kind === "holiday") {
           parts.push(`🎉 ${ev.name}`);
         } else if (ev.kind === "shift") {
-          const t = ev.info.type;
           const range =
             ev.info.start_time && ev.info.end_time
               ? ` ${ev.info.start_time}-${ev.info.end_time}`
@@ -228,6 +230,48 @@ export default function CalendarScreen() {
     } catch {
       await Linking.openURL(fallback);
     }
+  };
+
+  const shareImage = async () => {
+    if (!captureViewRef.current) return;
+    try {
+      const uri = await captureRef(captureViewRef, {
+        format: "png",
+        quality: 1,
+        result: "tmpfile",
+      });
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        Alert.alert(
+          "Compartilhamento indisponível",
+          "Este dispositivo não suporta o compartilhamento de imagens."
+        );
+        return;
+      }
+      await Sharing.shareAsync(uri, {
+        mimeType: "image/png",
+        dialogTitle: `Escala ${MONTHS_PT[month]}/${year}`,
+      });
+    } catch (e: any) {
+      Alert.alert("Erro", e?.message ?? "Não foi possível gerar a imagem");
+    }
+  };
+
+  const shareMonth = () => {
+    if (Platform.OS === "web") {
+      // Native Alert doesn't render on web reliably; go straight to text.
+      shareTextOnWhatsApp();
+      return;
+    }
+    Alert.alert(
+      "Compartilhar escala",
+      `Como você quer compartilhar ${MONTHS_PT[month]}/${year}?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Como texto (WhatsApp)", onPress: shareTextOnWhatsApp },
+        { text: "Como imagem", onPress: shareImage },
+      ]
+    );
   };
 
   const openDay = (d: Date) => {
@@ -384,6 +428,88 @@ export default function CalendarScreen() {
       <EditShiftSheet ref={editRef} onSaved={load} />
       <EventSheet ref={eventRef} onSaved={load} />
       <DayActionsSheet ref={actionsRef} />
+
+      {/* Off-screen printable calendar for image capture */}
+      <View
+        ref={captureViewRef}
+        collapsable={false}
+        style={styles.captureView}
+        pointerEvents="none"
+      >
+        <View style={styles.captureCard}>
+          <Text style={styles.captureTitle}>
+            Escala de {MONTHS_PT[month]} de {year}
+          </Text>
+          <Text style={styles.captureSub}>EscalaFácil</Text>
+          <View style={styles.captureWeekRow}>
+            {WEEKDAYS_PT.map((d, i) => (
+              <Text
+                key={i}
+                style={[
+                  styles.captureWeekDay,
+                  (i === 0 || i === 6) && { color: colors.error },
+                ]}
+              >
+                {d}
+              </Text>
+            ))}
+          </View>
+          <View style={styles.captureGrid}>
+            {grid.map((d) => {
+              const iso = fmtDate(d);
+              const events = eventsByDate.get(iso) ?? [];
+              const inMonth = d.getMonth() === month;
+              const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+              return (
+                <View
+                  key={`cap-${iso}`}
+                  style={[styles.captureCell, { opacity: inMonth ? 1 : 0.35 }]}
+                >
+                  <Text
+                    style={[styles.captureDay, isWeekend && { color: colors.error }]}
+                  >
+                    {d.getDate()}
+                  </Text>
+                  {events.slice(0, 4).map((ev, i) => {
+                    if (ev.kind === "holiday") {
+                      return (
+                        <View key={`ch-${i}`} style={styles.captureHoliday}>
+                          <Text style={styles.captureHolidayText} numberOfLines={2}>
+                            {ev.name}
+                          </Text>
+                        </View>
+                      );
+                    }
+                    return (
+                      <View key={`ce-${i}`} style={styles.captureEventRow}>
+                        <View
+                          style={[styles.captureEventBar, { backgroundColor: ev.color }]}
+                        />
+                        <Text style={styles.captureEventLabel} numberOfLines={1}>
+                          {ev.label}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                  {events.length > 4 ? (
+                    <Text style={styles.captureMore}>+{events.length - 4}</Text>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+          <View style={styles.captureLegend}>
+            {workplaces.map((wp) => (
+              <View key={wp.id} style={styles.captureLegendItem}>
+                <View style={[styles.captureLegendDot, { backgroundColor: wp.color }]} />
+                <Text style={styles.captureLegendText}>
+                  {initialsOf(wp.name)} = {wp.name}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
@@ -533,4 +659,111 @@ const useStyles = makeStyles((colors) => ({
     paddingHorizontal: spacing.xl,
   },
   emptyBtnText: { color: colors.onBrandPrimary, fontWeight: "700", fontSize: 15 },
+
+  captureView: {
+    position: "absolute",
+    left: -10000,
+    top: 0,
+    width: 720,
+    backgroundColor: colors.surface,
+  },
+  captureCard: {
+    padding: 24,
+    backgroundColor: colors.surface,
+  },
+  captureTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: colors.onSurface,
+    textAlign: "center",
+  },
+  captureSub: {
+    color: colors.muted,
+    textAlign: "center",
+    marginBottom: 16,
+    fontSize: 12,
+  },
+  captureWeekRow: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingBottom: 8,
+    marginBottom: 4,
+  },
+  captureWeekDay: {
+    flex: 1,
+    textAlign: "center",
+    color: colors.muted,
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  captureGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  captureCell: {
+    width: `${100 / 7}%`,
+    minHeight: 100,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+    gap: 3,
+  },
+  captureDay: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.onSurface,
+    marginBottom: 2,
+  },
+  captureEventRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  captureEventBar: {
+    width: 3,
+    height: 14,
+    borderRadius: 2,
+  },
+  captureEventLabel: {
+    flex: 1,
+    color: colors.onSurface,
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  captureHoliday: {
+    backgroundColor: "rgba(52,199,89,0.18)",
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  captureHolidayText: {
+    color: colors.success,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  captureMore: { color: colors.muted, fontSize: 10, fontWeight: "600" },
+  captureLegend: {
+    marginTop: 20,
+    padding: 12,
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 8,
+    gap: 6,
+  },
+  captureLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  captureLegendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  captureLegendText: {
+    color: colors.onSurface,
+    fontSize: 12,
+    fontWeight: "500",
+  },
 }));
