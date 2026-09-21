@@ -218,7 +218,7 @@ async def get_current_user(authorization: Optional[str] = Header(default=None)) 
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail='Token inválido ou expirado')
     user = await db.users.find_one({'id': user_id}, {'_id': 0})
-    if not user:
+    if not user or user.get('deleted_at'):
         raise HTTPException(status_code=401, detail='Usuário não encontrado')
     return user
 
@@ -260,6 +260,29 @@ async def login(body: LoginBody):
 @api_router.get('/auth/me', response_model=PublicUser)
 async def me(user=Depends(get_current_user)):
     return PublicUser(id=user['id'], name=user['name'], email=user['email'])
+
+
+@api_router.delete('/auth/me', status_code=204)
+async def delete_me(user=Depends(get_current_user)):
+    uid = user['id']
+    # Anonymize the user record (soft-delete pattern) so a fresh sign-up can reuse the e-mail.
+    await db.users.update_one(
+        {'id': uid},
+        {
+            '$set': {
+                'deleted_at': datetime.now(timezone.utc).isoformat(),
+                'email': f'deleted-{uid}@deleted.local',
+                'password_hash': '',
+                'name': 'Conta excluída',
+            }
+        },
+    )
+    # Remove owned data.
+    await db.workplaces.delete_many({'user_id': uid})
+    await db.shift_overrides.delete_many({'user_id': uid})
+    await db.holidays.delete_many({'user_id': uid})
+    await db.extra_events.delete_many({'user_id': uid})
+    return None
 
 
 # ============ Workplaces ============

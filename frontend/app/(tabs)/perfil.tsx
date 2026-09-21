@@ -92,6 +92,28 @@ export default function PerfilScreen() {
     ]);
   };
 
+  const confirmDelete = () => {
+    Alert.alert(
+      "Excluir conta",
+      "Isso apaga permanentemente sua conta, seus locais de trabalho, plantões e feriados. Não é possível desfazer.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Excluir",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await api.deleteMe();
+              await logout();
+            } catch (e: any) {
+              Alert.alert("Erro", e.message ?? "Não foi possível excluir a conta");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
@@ -152,6 +174,14 @@ export default function PerfilScreen() {
         <Pressable testID="logout-button" style={styles.rowCard} onPress={confirmLogout}>
           <Ionicons name="log-out-outline" size={22} color={colors.error} />
           <Text style={[styles.rowTitle, { color: colors.error, flex: 1 }]}>Sair da conta</Text>
+        </Pressable>
+        <Pressable
+          testID="delete-account-button"
+          style={[styles.rowCard, { marginTop: spacing.sm }]}
+          onPress={confirmDelete}
+        >
+          <Ionicons name="trash-outline" size={22} color={colors.error} />
+          <Text style={[styles.rowTitle, { color: colors.error, flex: 1 }]}>Excluir conta</Text>
         </Pressable>
 
         <Text style={styles.legal}>

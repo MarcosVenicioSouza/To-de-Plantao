@@ -117,6 +117,7 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => req<User>("/auth/me"),
+  deleteMe: () => req<void>("/auth/me", { method: "DELETE" }),
 
   listWorkplaces: () => req<Workplace[]>("/workplaces"),
   createWorkplace: (b: Partial<Workplace>) =>

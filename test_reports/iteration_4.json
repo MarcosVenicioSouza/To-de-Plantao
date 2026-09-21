@@ -1,0 +1,35 @@
+{
+  "summary": "Backend-only verification of the new DELETE /api/auth/me account deletion endpoint on EscalaFácil. Wrote a dedicated pytest suite (test_account_deletion.py) with 13 tests covering: user registration + full data seed (workplace, shift override, holiday, extra event); DELETE /api/auth/me returning 204; token invalidation (GET /api/auth/me and /api/workplaces returning 401 after delete); login with the original credentials returning 401 because password_hash was cleared; re-registration with the same email succeeding (201) and no stale data visible for the new account; DELETE /api/auth/me with no token / bogus token returning 401. All 13 tests pass against the public preview URL. No backend issues found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_account_deletion.py",
+    "/app/test_reports/pytest/pytest_account_deletion.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "delete_me endpoint (server.py:265-285) correctly anonymises the user (email → deleted-<uid>@deleted.local, password_hash cleared, deleted_at timestamp) and deletes owned workplaces/shift_overrides/holidays/extra_events. Verified end-to-end.",
+    "get_current_user (server.py:220-221) properly rejects tokens whose user document has deleted_at set – confirmed by 401 responses on /auth/me and /workplaces after deletion.",
+    "Email is normalised to lowercase by backend (via Pydantic EmailStr / storage). Not a bug, but tests must submit lowercase emails to match on read-back. Documented in the test file."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_account_deletion.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13)",
+    "frontend": "not tested (backend-only request)"
+  },
+  "seed_data_creation": "Each test run registers a unique user (test_delme_<uuid>@example.com), creates 1 workplace + 1 shift override + 1 holiday + 1 extra event, then deletes the account – all seeded data is anonymised/purged by the endpoint under test. A second re-registered account with the same email is also deleted at the end of the flow, leaving no residue.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend pytest config in /app/backend/pytest.ini has default addopts using pytest-xdist (-n auto --dist loadscope). Module-scoped fixtures survive because loadscope keeps a class together on one worker, but if you ever split, pass `-o addopts=` to force serial. Backend base URL: https://nurse-scheduler-15.preview.emergentagent.com (from EXPO_PUBLIC_BACKEND_URL). Auth is Bearer JWT via /api/auth/register|login. Emails are stored lowercase.",
+  "rca_of_issue": "N/A – the endpoint works as specified. Initial test failures during authoring were due to the test asserting mixed-case emails against a lowercase-normalised backend response; fixed by using lowercase test emails."
+}
