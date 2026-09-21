@@ -20,7 +20,11 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-JWT_SECRET = os.environ.get('JWT_SECRET', 'escalafacil-dev-secret-change-in-prod-2026')
+JWT_SECRET = os.environ.get('JWT_SECRET') or ''
+if not JWT_SECRET or len(JWT_SECRET) < 32:
+    raise RuntimeError(
+        'JWT_SECRET is missing or too short (min 32 chars). Refuse to start.'
+    )
 JWT_ALG = 'HS256'
 JWT_EXP_DAYS = 30
 

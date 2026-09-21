@@ -1,0 +1,37 @@
+{
+  "summary": "Backend regression + security-hardening verification after JWT_SECRET guard was added. Ran 48 pytest cases across 3 files against the public EXPO_BACKEND_URL. 48/48 passed (100%). Auth flows (register/login/wrong-password/me with/without/invalid token) all behave correctly. HS256 signature enforcement verified: tampered payload, wrong-secret HS256 token, alg=none downgrade, and malformed tokens all yield 401. Workplace CRUD (including manha_color=#FFCC00 / tarde_color=#FF9500 defaults and partial-update preservation), shift-override upsert/delete for all types (SD/SN/MANHA/TARDE/AVULSO/FOLGA/FERIAS + 422 for invalid type), holidays CRUD, extra-events CRUD, and cross-user authorization boundary all pass. Startup guard confirmed via source at /app/backend/server.py:23-27 (JWT_SECRET required, >=32 chars else RuntimeError); deployed /app/backend/.env JWT_SECRET is 60 chars.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_escalafacil.py",
+    "/app/backend/tests/test_security_hardening.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "JWT guard at server.py:23-27 correctly rejects missing or <32-char JWT_SECRET at import time (fail-fast). Deployed .env has a 60-char secret.",
+    "jwt.decode uses algorithms=[JWT_ALG] (whitelist), so alg=none downgrade attacks are correctly rejected (verified).",
+    "HS256 signature verification is enforced: forged tokens signed with an attacker-controlled secret and payload-tampered tokens with the original signature are both rejected with 401.",
+    "Consider adding /app/backend/.env.example (without secrets) so new environments know JWT_SECRET is a required >=32-char variable; not blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_security_hardening.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (48/48)",
+    "frontend": "not tested (backend-only request)"
+  },
+  "seed_data_creation": "Ephemeral TEST_ workplaces, holidays, events, and a per-run second user (user2_<hex>@test.com); TEST_ resources cleaned up via test_zzz_cleanup and per-test finalizers.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend tests split across three files under /app/backend/tests/: (1) backend_test.py covers MANHA/TARDE + color defaults + core CRUD, (2) test_escalafacil.py covers full auth/workplaces/shifts/holidays + cross-user authorization boundary, (3) test_security_hardening.py covers JWT signature enforcement (tampering, wrong secret, alg=none, malformed) and static verification of the JWT_SECRET startup guard. Run: pytest /app/backend/tests/ -v. Uses demo@escalafacil.com / demo123456 (register-or-login). Preview URL cannot be restarted, so startup-guard failure path is only verified via source inspection, not by actually removing JWT_SECRET."
+}
