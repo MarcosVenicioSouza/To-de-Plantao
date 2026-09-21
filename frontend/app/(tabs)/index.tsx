@@ -246,7 +246,7 @@ export default function CalendarScreen() {
 
             const primaryBg = info ? shiftColor(info.type, current) : "transparent";
             const secondaryBg = info2 ? shiftColor(info2.type, secondary) : "transparent";
-            const splitMode = !!(secondary && (primaryWork || secondaryWork));
+            const dualMode = !!secondary;
 
             return (
               <Pressable
@@ -266,23 +266,8 @@ export default function CalendarScreen() {
                     holiday && !isToday && { borderColor: colors.warning, borderWidth: 1 },
                   ]}
                 >
-                  {/* Backgrounds */}
-                  {splitMode ? (
-                    <>
-                      <View
-                        style={[
-                          styles.splitTop,
-                          { backgroundColor: primaryWork ? primaryBg : "transparent" },
-                        ]}
-                      />
-                      <View
-                        style={[
-                          styles.splitBottom,
-                          { backgroundColor: secondaryWork ? secondaryBg : "transparent" },
-                        ]}
-                      />
-                    </>
-                  ) : primaryWork ? (
+                  {/* Single-workplace mode: fill the whole cell with the shift color */}
+                  {!dualMode && primaryWork ? (
                     <View style={[styles.solidFill, { backgroundColor: primaryBg }]} />
                   ) : null}
 
@@ -293,18 +278,35 @@ export default function CalendarScreen() {
                   <Text
                     style={[
                       styles.dayNum,
-                      { color: primaryWork ? "#FFFFFF" : colors.onSurface },
-                      holiday && !primaryWork && { color: colors.warning, fontWeight: "800" },
+                      { color: !dualMode && primaryWork ? "#FFFFFF" : colors.onSurface },
+                      holiday && (dualMode || !primaryWork) && { color: colors.warning, fontWeight: "800" },
+                      dualMode && { marginBottom: 10 },
                     ]}
                   >
                     {d.getDate()}
                   </Text>
 
-                  {/* Primary tag */}
-                  {info && info.type !== "FOLGA" ? (
+                  {/* Single-mode shift tag */}
+                  {!dualMode && info && info.type !== "FOLGA" ? (
                     <Text style={[styles.shiftTag, { color: "#FFFFFF" }]}>
                       {info.type === "FERIAS" ? "FÉRIAS" : info.type}
                     </Text>
+                  ) : null}
+
+                  {/* Dual-mode: two mini badges (dot + initials) at the bottom */}
+                  {dualMode ? (
+                    <View style={styles.badgeRow}>
+                      {primaryWork && current ? (
+                        <View style={[styles.miniBadge, { backgroundColor: primaryBg }]}>
+                          <Text style={styles.miniBadgeText}>{initialsOf(current.name)}</Text>
+                        </View>
+                      ) : null}
+                      {secondaryWork && secondary ? (
+                        <View style={[styles.miniBadge, { backgroundColor: secondaryBg }]}>
+                          <Text style={styles.miniBadgeText}>{initialsOf(secondary.name)}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                   ) : null}
 
                   {/* Override dot */}
@@ -404,6 +406,13 @@ function formatFullDate(iso: string): string {
   return `${dow}, ${day}/${mm}/${d.getFullYear()}`;
 }
 
+function initialsOf(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
   header: {
@@ -474,6 +483,30 @@ const useStyles = makeStyles((colors) => ({
     position: "absolute",
     bottom: 0, left: 0, right: 0,
     height: "50%",
+  },
+  badgeRow: {
+    position: "absolute",
+    bottom: 2,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 3,
+  },
+  miniBadge: {
+    minWidth: 16,
+    height: 12,
+    borderRadius: 6,
+    paddingHorizontal: 3,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  miniBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 8,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+    lineHeight: 10,
   },
   holidayShadow: {
     position: "absolute",
