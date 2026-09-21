@@ -59,7 +59,6 @@ export const EditShiftSheet = forwardRef<EditShiftSheetRef, Props>(function Edit
       return;
     }
     if (t === "AVULSO") {
-      // keep whatever the user typed, or default to SD hours as a start point
       if (!start) setStart(wp.sd_start);
       if (!end) setEnd(wp.sd_end);
       return;
@@ -142,13 +141,17 @@ export const EditShiftSheet = forwardRef<EditShiftSheetRef, Props>(function Edit
         <Text style={styles.sheetDate}>{dateLabel}</Text>
 
         <View style={styles.segment}>
-          {(["SD", "SN", "AVULSO", "FOLGA", "FERIAS"] as ShiftType[]).map((t) => {
+          {(["SD", "SN", "MANHA", "TARDE", "AVULSO", "FOLGA", "FERIAS"] as ShiftType[]).map((t) => {
             const active = type === t;
             const bg =
               t === "SD"
                 ? wp?.shift_day_color ?? colors.shiftDay
                 : t === "SN"
                 ? wp?.shift_night_color ?? colors.shiftNight
+                : t === "MANHA"
+                ? wp?.manha_color ?? "#FFCC00"
+                : t === "TARDE"
+                ? wp?.tarde_color ?? "#FF9500"
                 : t === "AVULSO"
                 ? wp?.avulso_color ?? colors.success
                 : t === "FERIAS"
@@ -158,7 +161,19 @@ export const EditShiftSheet = forwardRef<EditShiftSheetRef, Props>(function Edit
               ? { backgroundColor: bg, borderColor: bg }
               : { backgroundColor: colors.surface, borderColor: colors.border };
             const label =
-              t === "SD" ? "SD" : t === "SN" ? "SN" : t === "AVULSO" ? "Avulso" : t === "FERIAS" ? "Férias" : "Folga";
+              t === "SD"
+                ? "SD"
+                : t === "SN"
+                ? "SN"
+                : t === "MANHA"
+                ? "Manhã"
+                : t === "TARDE"
+                ? "Tarde"
+                : t === "AVULSO"
+                ? "Avulso"
+                : t === "FERIAS"
+                ? "Férias"
+                : "Folga";
             return (
               <Pressable
                 key={t}
@@ -275,12 +290,15 @@ const useStyles = makeStyles((colors) => ({
   sheetDate: { color: colors.muted, marginTop: 2, marginBottom: spacing.lg, fontSize: 14 },
   segment: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
     marginBottom: spacing.lg,
   },
   segBtn: {
-    flex: 1,
+    minWidth: 74,
+    flexGrow: 1,
     paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
     alignItems: "center",

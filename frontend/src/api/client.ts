@@ -54,12 +54,14 @@ export type Workplace = {
   shift_day_color: string;
   shift_night_color: string;
   avulso_color: string;
+  manha_color: string;
+  tarde_color: string;
   is_avulso_only: boolean;
   vacations: VacationPeriod[];
   created_at: string;
 };
 
-export type ShiftType = "SD" | "SN" | "FOLGA" | "AVULSO" | "FERIAS";
+export type ShiftType = "SD" | "SN" | "FOLGA" | "AVULSO" | "FERIAS" | "MANHA" | "TARDE";
 
 export type ShiftOverride = {
   id: string;
@@ -75,6 +77,17 @@ export type ShiftOverride = {
 };
 
 export type Holiday = { id: string; user_id: string; date: string; name: string };
+export type ExtraEvent = {
+  id: string;
+  user_id: string;
+  date: string;
+  label: string;
+  color: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  note?: string | null;
+  created_at: string;
+};
 export type User = { id: string; name: string; email: string };
 
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -127,4 +140,12 @@ export const api = {
   createHoliday: (date: string, name: string) =>
     req<Holiday>("/holidays", { method: "POST", body: JSON.stringify({ date, name }) }),
   deleteHoliday: (id: string) => req<void>(`/holidays/${id}`, { method: "DELETE" }),
+
+  listEvents: (year: number, month: number) =>
+    req<ExtraEvent[]>(`/events?year=${year}&month=${month}`),
+  createEvent: (body: Partial<ExtraEvent>) =>
+    req<ExtraEvent>("/events", { method: "POST", body: JSON.stringify(body) }),
+  updateEvent: (id: string, body: Partial<ExtraEvent>) =>
+    req<ExtraEvent>(`/events/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteEvent: (id: string) => req<void>(`/events/${id}`, { method: "DELETE" }),
 };

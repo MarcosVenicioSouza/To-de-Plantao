@@ -12,60 +12,79 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { makeStyles, spacing, radius, useTheme } from "@/src/theme";
 import { useWorkplaces } from "@/src/contexts/workplaces";
-import { api, ShiftOverride, Workplace, ShiftType, Holiday } from "@/src/api/client";
+import {
+  api,
+  ExtraEvent,
+  Holiday,
+  ShiftOverride,
+  Workplace,
+  ShiftType,
+} from "@/src/api/client";
 import {
   fmtDate,
   MONTHS_PT,
+  MONTHS_SHORT_PT,
   WEEKDAYS_PT,
-  mergeShifts,
+  computeCycleShift,
+  isOnVacation,
+  shiftDefaultHours,
   monthGrid,
   parseISODate,
   buildHolidayMap,
+  initialsOf,
+  hoursBetween,
   ShiftInfo,
 } from "@/src/utils/shifts";
 import { EditShiftSheet, EditShiftSheetRef } from "@/src/components/edit-shift-sheet";
-import { WorkplacePicker } from "@/src/components/workplace-picker";
+import { EventSheet, EventSheetRef } from "@/src/components/event-sheet";
+import { DayActionsSheet, DayActionsSheetRef } from "@/src/components/day-actions-sheet";
+import { Linking } from "react-native";
+
+type DayEvent =
+  | {
+      kind: "shift";
+      workplace: Workplace;
+      info: ShiftInfo;
+      label: string;
+      color: string;
+    }
+  | { kind: "extra"; event: ExtraEvent; label: string; color: string }
+  | { kind: "holiday"; name: string };
 
 export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
   const styles = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
-  const { workplaces, current, loading: wpLoading, setCurrentId } = useWorkplaces();
+  const { workplaces, loading: wpLoading, refresh: refreshWps } = useWorkplaces();
 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
-  const [overrides, setOverrides] = useState<ShiftOverride[]>([]);
-  const [overrides2, setOverrides2] = useState<ShiftOverride[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState<"primary" | "secondary" | null>(null);
-  const [secondaryId, setSecondaryId] = useState<string | null>(null);
+  const [overridesByWp, setOverridesByWp] = useState<Record<string, ShiftOverride[]>>({});
+  const [extraEvents, setExtraEvents] = useState<ExtraEvent[]>([]);
   const [customHolidays, setCustomHolidays] = useState<Holiday[]>([]);
-  const [sheetTarget, setSheetTarget] = useState<Workplace | null>(null);
-  const sheetRef = useRef<EditShiftSheetRef>(null);
-
-  const secondary = useMemo(
-    () => workplaces.find((w) => w.id === secondaryId) ?? null,
-    [workplaces, secondaryId]
-  );
+  const [loading, setLoading] = useState(false);
+  const editRef = useRef<EditShiftSheetRef>(null);
+  const eventRef = useRef<EventSheetRef>(null);
+  const actionsRef = useRef<DayActionsSheetRef>(null);
 
   const load = async () => {
-    const jobs: Promise<any>[] = [];
-    if (current) jobs.push(api.listOverrides(current.id, year, month + 1));
-    else jobs.push(Promise.resolve([]));
-    if (secondary) jobs.push(api.listOverrides(secondary.id, year, month + 1));
-    else jobs.push(Promise.resolve([]));
-    jobs.push(api.listHolidays().catch(() => [] as Holiday[]));
-
     setLoading(true);
     try {
-      const [a, b, holidays] = await Promise.all(jobs);
-      setOverrides(a as ShiftOverride[]);
-      setOverrides2(b as ShiftOverride[]);
-      setCustomHolidays(holidays as Holiday[]);
-    } catch {
-      // ignore
+      const ovJobs = workplaces.map((w) =>
+        api.listOverrides(w.id, year, month + 1).then((r) => [w.id, r] as const)
+      );
+      const [ovs, events, holidays] = await Promise.all([
+        Promise.all(ovJobs),
+        api.listEvents(year, month + 1).catch(() => [] as ExtraEvent[]),
+        api.listHolidays().catch(() => [] as Holiday[]),
+      ]);
+      const map: Record<string, ShiftOverride[]> = {};
+      for (const [id, arr] of ovs) map[id] = arr;
+      setOverridesByWp(map);
+      setExtraEvents(events);
+      setCustomHolidays(holidays);
     } finally {
       setLoading(false);
     }
@@ -74,57 +93,156 @@ export default function CalendarScreen() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, secondary?.id, year, month]);
+  }, [year, month, workplaces.map((w) => w.id).join(",")]);
 
   const grid = useMemo(() => monthGrid(year, month), [year, month]);
-
-  const shiftMap = useMemo(() => {
-    if (!current) return {} as Record<string, ShiftInfo>;
-    return mergeShifts(grid, current, overrides);
-  }, [grid, current, overrides]);
-
-  const shiftMap2 = useMemo(() => {
-    if (!secondary) return {} as Record<string, ShiftInfo>;
-    return mergeShifts(grid, secondary, overrides2);
-  }, [grid, secondary, overrides2]);
-
   const holidayMap = useMemo(
     () => buildHolidayMap([year, year + 1], customHolidays),
     [year, customHolidays]
   );
 
-  const nextShift = useMemo(() => {
-    if (!current) return null;
-    const t = new Date();
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() + i);
-      const iso = fmtDate(d);
-      const info = mergeShifts([d], current, overrides)[iso];
-      if (info.type === "SD" || info.type === "SN" || info.type === "AVULSO") return info;
-    }
-    return null;
-  }, [current, overrides]);
-
-  const prevMonth = () => (month === 0 ? (setYear(year - 1), setMonth(11)) : setMonth(month - 1));
-  const nextMonth = () => (month === 11 ? (setYear(year + 1), setMonth(0)) : setMonth(month + 1));
-
-  const openDay = (date: Date, targetWp: Workplace | null) => {
-    if (!targetWp) return;
-    const iso = fmtDate(date);
-    const map = targetWp.id === current?.id ? shiftMap : shiftMap2;
-    const info = map[iso];
-    if (!info) return;
-    setSheetTarget(targetWp);
-    sheetRef.current?.open(iso, info, targetWp);
-  };
-
-  const shiftColor = (t: ShiftType, wp: Workplace | null) => {
-    if (!wp) return colors.shiftRest;
+  const shiftColorFor = (t: ShiftType, wp: Workplace): string => {
     if (t === "SD") return wp.shift_day_color;
     if (t === "SN") return wp.shift_night_color;
+    if (t === "MANHA") return wp.manha_color;
+    if (t === "TARDE") return wp.tarde_color;
     if (t === "AVULSO") return wp.avulso_color;
     if (t === "FERIAS") return colors.warning;
     return colors.shiftRest;
+  };
+
+  const shiftLabel = (t: ShiftType, wp: Workplace): string => {
+    const initials = initialsOf(wp.name);
+    if (t === "SD") return `SD ${initials}`;
+    if (t === "SN") return `SN ${initials}`;
+    if (t === "MANHA") return `Manhã ${initials}`;
+    if (t === "TARDE") return `Tarde ${initials}`;
+    if (t === "AVULSO") return `Avulso ${initials}`;
+    if (t === "FERIAS") return `Férias ${initials}`;
+    return "";
+  };
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, DayEvent[]>();
+    for (const d of grid) {
+      const iso = fmtDate(d);
+      const list: DayEvent[] = [];
+
+      const holiday = holidayMap.get(iso);
+      if (holiday) list.push({ kind: "holiday", name: holiday });
+
+      for (const wp of workplaces) {
+        const ov = (overridesByWp[wp.id] ?? []).find((o) => o.date === iso);
+        let info: ShiftInfo;
+        if (ov) {
+          info = {
+            date: iso,
+            type: ov.shift_type,
+            start_time: ov.start_time,
+            end_time: ov.end_time,
+            note: ov.note,
+            swap_with: ov.swap_with,
+            overridden: true,
+          };
+        } else if (isOnVacation(d, wp)) {
+          info = { date: iso, type: "FERIAS", overridden: false };
+        } else if (wp.is_avulso_only) {
+          info = { date: iso, type: "FOLGA", overridden: false };
+        } else {
+          const t = computeCycleShift(d, wp);
+          const h = shiftDefaultHours(t, wp);
+          info = { date: iso, type: t, start_time: h.start, end_time: h.end, overridden: false };
+        }
+        if (info.type === "FOLGA") continue;
+        list.push({
+          kind: "shift",
+          workplace: wp,
+          info,
+          label: shiftLabel(info.type, wp),
+          color: shiftColorFor(info.type, wp),
+        });
+      }
+
+      for (const ev of extraEvents.filter((e) => e.date === iso)) {
+        list.push({ kind: "extra", event: ev, label: ev.label, color: ev.color });
+      }
+
+      if (list.length > 0) map.set(iso, list);
+    }
+    return map;
+  }, [grid, workplaces, overridesByWp, extraEvents, holidayMap, colors]);
+
+  const prevMonth = () =>
+    month === 0 ? (setYear(year - 1), setMonth(11)) : setMonth(month - 1);
+  const nextMonth = () =>
+    month === 11 ? (setYear(year + 1), setMonth(0)) : setMonth(month + 1);
+
+  const shareMonth = async () => {
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const lines: string[] = [];
+    lines.push(`📅 *Escala de ${MONTHS_PT[month]}/${year}*`);
+    lines.push("");
+    let totalHours = 0;
+    for (let dnum = 1; dnum <= daysInMonth; dnum++) {
+      const d = new Date(year, month, dnum);
+      const iso = fmtDate(d);
+      const events = eventsByDate.get(iso) ?? [];
+      const dow = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][d.getDay()];
+      const parts: string[] = [];
+      for (const ev of events) {
+        if (ev.kind === "holiday") {
+          parts.push(`🎉 ${ev.name}`);
+        } else if (ev.kind === "shift") {
+          const t = ev.info.type;
+          const range =
+            ev.info.start_time && ev.info.end_time
+              ? ` ${ev.info.start_time}-${ev.info.end_time}`
+              : "";
+          parts.push(`${ev.label}${range}`);
+          totalHours += hoursBetween(ev.info.start_time, ev.info.end_time);
+        } else if (ev.kind === "extra") {
+          const range =
+            ev.event.start_time && ev.event.end_time
+              ? ` ${ev.event.start_time}-${ev.event.end_time}`
+              : "";
+          parts.push(`⚡ ${ev.label}${range}`);
+          totalHours += hoursBetween(ev.event.start_time, ev.event.end_time);
+        }
+      }
+      const dd = String(dnum).padStart(2, "0");
+      if (parts.length === 0) {
+        lines.push(`${dd}/${String(month + 1).padStart(2, "0")} (${dow}) — Folga`);
+      } else {
+        lines.push(`${dd}/${String(month + 1).padStart(2, "0")} (${dow}) — ${parts.join(" | ")}`);
+      }
+    }
+    lines.push("");
+    lines.push(`⏱️ *Total:* ${Math.round(totalHours * 10) / 10}h`);
+    lines.push("Enviado por EscalaFácil");
+    const text = encodeURIComponent(lines.join("\n"));
+    const url = `whatsapp://send?text=${text}`;
+    const fallback = `https://wa.me/?text=${text}`;
+    try {
+      const supported = await Linking.canOpenURL(url);
+      await Linking.openURL(supported ? url : fallback);
+    } catch {
+      await Linking.openURL(fallback);
+    }
+  };
+
+  const openDay = (d: Date) => {
+    const iso = fmtDate(d);
+    actionsRef.current?.open({
+      date: iso,
+      workplaces,
+      onEditShift: (wp) => {
+        const info = pickInfo(d, wp, overridesByWp[wp.id] ?? []);
+        editRef.current?.open(iso, info, wp);
+      },
+      onAddEvent: () => eventRef.current?.open(iso, null),
+      onEditEvent: (ev) => eventRef.current?.open(iso, ev),
+      events: extraEvents.filter((e) => e.date === iso),
+    });
   };
 
   if (!wpLoading && workplaces.length === 0) {
@@ -150,73 +268,35 @@ export default function CalendarScreen() {
     );
   }
 
-  const canShowSecondary = workplaces.length >= 2;
-
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <View style={styles.wpRow}>
-          <Pressable
-            testID="workplace-selector"
-            style={[styles.wpSelector, { flex: 1 }]}
-            onPress={() => setPickerOpen("primary")}
-          >
-            <View style={[styles.wpDot, { backgroundColor: current?.color ?? colors.brandPrimary }]} />
-            <Text style={styles.wpName} numberOfLines={1}>
-              {current?.name ?? "Selecione um local"}
-            </Text>
-            <Ionicons name="chevron-down" size={16} color={colors.onSurface} />
-          </Pressable>
-          {canShowSecondary ? (
-            <Pressable
-              testID="workplace-selector-2"
-              style={[styles.wpSelector, secondary && styles.wpSelectorActive]}
-              onPress={() => setPickerOpen("secondary")}
-            >
-              {secondary ? (
-                <>
-                  <View style={[styles.wpDot, { backgroundColor: secondary.color }]} />
-                  <Text style={styles.wpName} numberOfLines={1}>
-                    {secondary.name}
-                  </Text>
-                  <Pressable
-                    onPress={() => setSecondaryId(null)}
-                    hitSlop={8}
-                    testID="clear-secondary"
-                  >
-                    <Ionicons name="close" size={16} color={colors.onSurface} />
-                  </Pressable>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="add" size={16} color={colors.brandPrimary} />
-                  <Text style={[styles.wpName, { color: colors.brandPrimary }]}>2º local</Text>
-                </>
-              )}
-            </Pressable>
-          ) : null}
-        </View>
-
         <View style={styles.monthRow}>
           <Pressable testID="prev-month" onPress={prevMonth} style={styles.monthBtn} hitSlop={8}>
             <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
           </Pressable>
           <Text style={styles.monthLabel} testID="month-label">
-            {MONTHS_PT[month]} {year}
+            {MONTHS_SHORT_PT[month]} {year}
           </Text>
-          <Pressable testID="next-month" onPress={nextMonth} style={styles.monthBtn} hitSlop={8}>
-            <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
-          </Pressable>
+          <View style={{ flexDirection: "row" }}>
+            <Pressable
+              testID="share-whatsapp"
+              onPress={shareMonth}
+              style={styles.monthBtn}
+              hitSlop={8}
+            >
+              <Ionicons name="logo-whatsapp" size={22} color={colors.success} />
+            </Pressable>
+            <Pressable testID="next-month" onPress={nextMonth} style={styles.monthBtn} hitSlop={8}>
+              <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
+            </Pressable>
+          </View>
         </View>
-
         <View style={styles.weekRow}>
           {WEEKDAYS_PT.map((d, i) => (
             <Text
               key={i}
-              style={[
-                styles.weekDay,
-                (i === 0 || i === 6) && { color: colors.error },
-              ]}
+              style={[styles.weekDay, (i === 0 || i === 6) && { color: colors.error }]}
             >
               {d}
             </Text>
@@ -226,230 +306,131 @@ export default function CalendarScreen() {
 
       <ScrollView
         contentContainerStyle={{
-          paddingHorizontal: spacing.md,
-          paddingBottom: insets.bottom + spacing.xxl,
+          paddingBottom: insets.bottom + 120,
         }}
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.brandPrimary} />
         }
       >
         <View style={styles.grid}>
-          {grid.map((d) => {
+          {grid.map((d, idx) => {
             const iso = fmtDate(d);
-            const info = shiftMap[iso];
-            const info2 = shiftMap2[iso];
+            const events = eventsByDate.get(iso) ?? [];
             const inMonth = d.getMonth() === month;
             const isToday = fmtDate(new Date()) === iso;
-            const holiday = holidayMap.get(iso);
-            const primaryWork = info && info.type !== "FOLGA";
-            const secondaryWork = info2 && info2.type !== "FOLGA";
-
-            const primaryBg = info ? shiftColor(info.type, current) : "transparent";
-            const secondaryBg = info2 ? shiftColor(info2.type, secondary) : "transparent";
-            const dualMode = !!secondary;
-
+            const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+            const startNewRow = idx % 7 === 0;
             return (
               <Pressable
                 key={iso}
                 testID={`day-${iso}`}
-                onPress={() => openDay(d, current)}
-                onLongPress={() => secondary && openDay(d, secondary)}
+                onPress={() => openDay(d)}
                 style={[
                   styles.cell,
+                  startNewRow && styles.cellFirst,
                   { opacity: inMonth ? 1 : 0.35 },
                 ]}
               >
-                <View
-                  style={[
-                    styles.cellFill,
-                    isToday && { borderColor: colors.brandPrimary, borderWidth: 2 },
-                    holiday && !isToday && { borderColor: colors.warning, borderWidth: 1 },
-                  ]}
-                >
-                  {/* Single-workplace mode: fill the whole cell with the shift color */}
-                  {!dualMode && primaryWork ? (
-                    <View style={[styles.solidFill, { backgroundColor: primaryBg }]} />
-                  ) : null}
-
-                  {/* Holiday shadow overlay */}
-                  {holiday ? <View style={styles.holidayShadow} /> : null}
-
-                  {/* Day number */}
+                <View style={[styles.dayNumWrap, isToday && styles.todayWrap]}>
                   <Text
                     style={[
                       styles.dayNum,
-                      { color: !dualMode && primaryWork ? "#FFFFFF" : colors.onSurface },
-                      holiday && (dualMode || !primaryWork) && { color: colors.warning, fontWeight: "800" },
-                      dualMode && { marginBottom: 10 },
+                      isWeekend && { color: colors.error },
+                      isToday && { color: colors.onBrandPrimary },
                     ]}
                   >
                     {d.getDate()}
                   </Text>
-
-                  {/* Single-mode shift tag */}
-                  {!dualMode && info && info.type !== "FOLGA" ? (
-                    <Text style={[styles.shiftTag, { color: "#FFFFFF" }]}>
-                      {info.type === "FERIAS" ? "FÉRIAS" : info.type}
-                    </Text>
-                  ) : null}
-
-                  {/* Dual-mode: two mini badges (dot + initials) at the bottom */}
-                  {dualMode ? (
-                    <View style={styles.badgeRow}>
-                      {primaryWork && current ? (
-                        <View style={[styles.miniBadge, { backgroundColor: primaryBg }]}>
-                          <Text style={styles.miniBadgeText}>{initialsOf(current.name)}</Text>
+                </View>
+                <View style={styles.eventsList}>
+                  {events.slice(0, 4).map((ev, i) => {
+                    if (ev.kind === "holiday") {
+                      return (
+                        <View key={`h-${i}`} style={styles.holidayChip}>
+                          <Text style={styles.holidayText} numberOfLines={2}>
+                            {ev.name}
+                          </Text>
                         </View>
-                      ) : null}
-                      {secondaryWork && secondary ? (
-                        <View style={[styles.miniBadge, { backgroundColor: secondaryBg }]}>
-                          <Text style={styles.miniBadgeText}>{initialsOf(secondary.name)}</Text>
-                        </View>
-                      ) : null}
-                    </View>
+                      );
+                    }
+                    return (
+                      <View key={`e-${i}`} style={styles.eventRow}>
+                        <View style={[styles.eventBar, { backgroundColor: ev.color }]} />
+                        <Text style={styles.eventLabel} numberOfLines={1}>
+                          {ev.label}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                  {events.length > 4 ? (
+                    <Text style={styles.moreText}>+{events.length - 4}</Text>
                   ) : null}
-
-                  {/* Override dot */}
-                  {info?.overridden ? <View style={styles.overrideDot} /> : null}
                 </View>
               </Pressable>
             );
           })}
         </View>
-
-        <View style={styles.legend}>
-          <LegendItem color={current?.shift_day_color ?? colors.shiftDay} label="SD" />
-          <LegendItem color={current?.shift_night_color ?? colors.shiftNight} label="SN" />
-          <LegendItem color={current?.avulso_color ?? colors.success} label="Avulso" />
-          <LegendItem color={colors.warning} label="Férias" />
-          <LegendItem color={colors.shiftRest} label="Folga" />
-        </View>
-
-        {secondary ? (
-          <Text style={styles.hint}>
-            Toque para editar {current?.name}. Toque e segure para editar {secondary.name}.
-          </Text>
-        ) : null}
-
-        {nextShift && current ? (
-          <View style={styles.nextCard} testID="next-shift-card">
-            <Text style={styles.nextTitle}>Próximo plantão</Text>
-            <View style={styles.nextRow}>
-              <View
-                style={[
-                  styles.nextBadge,
-                  { backgroundColor: shiftColor(nextShift.type, current) },
-                ]}
-              >
-                <Text style={styles.nextBadgeText}>{nextShift.type}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.nextDate}>{formatFullDate(nextShift.date)}</Text>
-                <Text style={styles.nextHours}>
-                  {nextShift.start_time ?? "--:--"} — {nextShift.end_time ?? "--:--"}
-                </Text>
-              </View>
-            </View>
-          </View>
-        ) : null}
       </ScrollView>
 
-      {loading ? (
-        <View pointerEvents="none" style={styles.loadingOverlay}>
-          <ActivityIndicator color={colors.brandPrimary} />
-        </View>
-      ) : null}
+      <Pressable
+        testID="add-random-event"
+        style={[styles.fab, { bottom: insets.bottom + 16 }]}
+        onPress={() => eventRef.current?.open(fmtDate(new Date()), null)}
+      >
+        <Ionicons name="flash" size={22} color={colors.onBrandPrimary} />
+        <Text style={styles.fabText}>Plantão aleatório</Text>
+      </Pressable>
 
-      <EditShiftSheet ref={sheetRef} onSaved={load} />
-
-      <WorkplacePicker
-        open={pickerOpen === "primary"}
-        onClose={() => setPickerOpen(null)}
-        workplaces={workplaces}
-        currentId={current?.id ?? null}
-        onSelect={(id) => {
-          setCurrentId(id);
-          if (secondaryId === id) setSecondaryId(null);
-          setPickerOpen(null);
-        }}
-      />
-      <WorkplacePicker
-        open={pickerOpen === "secondary"}
-        onClose={() => setPickerOpen(null)}
-        workplaces={workplaces.filter((w) => w.id !== current?.id)}
-        currentId={secondaryId}
-        onSelect={(id) => {
-          setSecondaryId(id);
-          setPickerOpen(null);
-        }}
-        title="Selecionar 2º local"
-      />
+      <EditShiftSheet ref={editRef} onSaved={load} />
+      <EventSheet ref={eventRef} onSaved={load} />
+      <DayActionsSheet ref={actionsRef} />
     </View>
   );
 }
 
-function LegendItem({ color, label }: { color: string; label: string }) {
-  const styles = useStyles();
-  return (
-    <View style={styles.legendItem}>
-      <View style={[styles.legendDot, { backgroundColor: color }]} />
-      <Text style={styles.legendText}>{label}</Text>
-    </View>
-  );
-}
-
-function formatFullDate(iso: string): string {
-  const d = parseISODate(iso);
-  const dow = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][d.getDay()];
-  const day = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dow}, ${day}/${mm}/${d.getFullYear()}`;
-}
-
-function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "?";
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
+function pickInfo(d: Date, wp: Workplace, overrides: ShiftOverride[]): ShiftInfo {
+  const iso = fmtDate(d);
+  const ov = overrides.find((o) => o.date === iso);
+  if (ov) {
+    return {
+      date: iso,
+      type: ov.shift_type,
+      start_time: ov.start_time,
+      end_time: ov.end_time,
+      note: ov.note,
+      swap_with: ov.swap_with,
+      overridden: true,
+    };
+  }
+  if (isOnVacation(d, wp)) return { date: iso, type: "FERIAS", overridden: false };
+  if (wp.is_avulso_only) return { date: iso, type: "FOLGA", overridden: false };
+  const t = computeCycleShift(d, wp);
+  const h = shiftDefaultHours(t, wp);
+  return { date: iso, type: t, start_time: h.start, end_time: h.end, overridden: false };
 }
 
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
   header: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  wpRow: { flexDirection: "row", gap: spacing.sm },
-  wpSelector: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  wpSelectorActive: { backgroundColor: colors.brandSecondary },
-  wpDot: { width: 10, height: 10, borderRadius: 5 },
-  wpName: { color: colors.onSurface, fontWeight: "600", fontSize: 13 },
   monthRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: spacing.md,
   },
   monthBtn: {
     width: 44,
     height: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: radius.md,
   },
-  monthLabel: { color: colors.onSurface, fontSize: 18, fontWeight: "700" },
-  weekRow: { flexDirection: "row", marginTop: spacing.md },
+  monthLabel: { color: colors.onSurface, fontSize: 22, fontWeight: "800" },
+  weekRow: { flexDirection: "row", marginTop: spacing.xs },
   weekDay: {
     flex: 1,
     textAlign: "center",
@@ -457,141 +438,99 @@ const useStyles = makeStyles((colors) => ({
     fontSize: 12,
     fontWeight: "600",
   },
-  grid: { flexDirection: "row", flexWrap: "wrap", paddingTop: spacing.sm },
-  cell: {
-    width: `${100 / 7}%`,
-    aspectRatio: 1,
-    padding: 3,
-  },
-  cellFill: {
-    flex: 1,
-    borderRadius: radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "transparent",
-    minHeight: 44,
-  },
-  solidFill: { ...(StyleFill()) },
-  splitTop: {
-    position: "absolute",
-    top: 0, left: 0, right: 0,
-    height: "50%",
-  },
-  splitBottom: {
-    position: "absolute",
-    bottom: 0, left: 0, right: 0,
-    height: "50%",
-  },
-  badgeRow: {
-    position: "absolute",
-    bottom: 2,
-    left: 0,
-    right: 0,
+  grid: {
     flexDirection: "row",
-    justifyContent: "center",
-    gap: 3,
-  },
-  miniBadge: {
-    minWidth: 16,
-    height: 12,
-    borderRadius: 6,
-    paddingHorizontal: 3,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  miniBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 8,
-    fontWeight: "800",
-    letterSpacing: 0.3,
-    lineHeight: 10,
-  },
-  holidayShadow: {
-    position: "absolute",
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: colors.warning,
-    opacity: 0.15,
-  },
-  dayNum: { fontSize: 15, fontWeight: "600" },
-  shiftTag: { fontSize: 9, fontWeight: "800", marginTop: 1, letterSpacing: 0.5 },
-  overrideDot: {
-    position: "absolute",
-    top: 4, right: 4,
-    width: 6, height: 6, borderRadius: 3,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1, borderColor: colors.warning,
-  },
-  legend: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: spacing.md,
-    marginTop: spacing.lg,
     flexWrap: "wrap",
   },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  legendDot: { width: 12, height: 12, borderRadius: 3 },
-  legendText: { color: colors.onSurfaceSecondary, fontSize: 12 },
-  hint: {
-    textAlign: "center",
-    color: colors.muted,
-    fontSize: 12,
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.lg,
+  cell: {
+    width: `${100 / 7}%`,
+    minHeight: 92,
+    paddingHorizontal: 3,
+    paddingVertical: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  nextCard: {
-    marginTop: spacing.xl,
-    backgroundColor: colors.brandSecondary,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
+  cellFirst: {},
+  dayNumWrap: {
+    alignSelf: "flex-start",
+    borderRadius: radius.sm,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
   },
-  nextTitle: {
-    color: colors.onBrandSecondary,
-    fontSize: 12,
+  todayWrap: { backgroundColor: colors.brandPrimary },
+  dayNum: { color: colors.onSurface, fontSize: 13, fontWeight: "700" },
+  eventsList: { marginTop: 2, gap: 2 },
+  eventRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  eventBar: {
+    width: 3,
+    height: 14,
+    borderRadius: 2,
+  },
+  eventLabel: {
+    flex: 1,
+    color: colors.onSurface,
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  holidayChip: {
+    backgroundColor: "rgba(52,199,89,0.18)",
+    borderRadius: radius.sm,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  holidayText: {
+    color: colors.success,
+    fontSize: 10,
     fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: spacing.sm,
   },
-  nextRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  nextBadge: {
-    width: 56, height: 56, borderRadius: radius.md,
-    alignItems: "center", justifyContent: "center",
+  moreText: { color: colors.muted, fontSize: 10, fontWeight: "600", marginTop: 1 },
+
+  fab: {
+    position: "absolute",
+    right: spacing.lg,
+    backgroundColor: colors.brandPrimary,
+    borderRadius: radius.pill,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.xs,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
-  nextBadgeText: { color: "#FFFFFF", fontWeight: "800", fontSize: 16 },
-  nextDate: { color: colors.onSurface, fontSize: 15, fontWeight: "700" },
-  nextHours: { color: colors.muted, fontSize: 14, marginTop: 2 },
-  loadingOverlay: {
-    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: "center", justifyContent: "flex-start",
-    paddingTop: 200,
-  },
+  fabText: { color: colors.onBrandPrimary, fontWeight: "700" },
+
   emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
   emptyIcon: {
-    width: 80, height: 80, borderRadius: 40,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: colors.brandSecondary,
-    alignItems: "center", justifyContent: "center",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: spacing.lg,
   },
   emptyTitle: { fontSize: 20, fontWeight: "700", color: colors.onSurface, textAlign: "center" },
   emptyBody: {
-    color: colors.muted, textAlign: "center",
-    marginTop: spacing.sm, fontSize: 14, lineHeight: 20,
+    color: colors.muted,
+    textAlign: "center",
+    marginTop: spacing.sm,
+    fontSize: 14,
+    lineHeight: 20,
   },
   emptyBtn: {
     marginTop: spacing.xl,
     backgroundColor: colors.brandPrimary,
     borderRadius: radius.md,
-    paddingVertical: spacing.md, paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
   },
   emptyBtnText: { color: colors.onBrandPrimary, fontWeight: "700", fontSize: 15 },
 }));
-
-// Helper for solid fill absolute-positioned
-function StyleFill() {
-  return {
-    position: "absolute" as const,
-    top: 0, left: 0, right: 0, bottom: 0,
-  };
-}

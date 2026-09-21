@@ -135,12 +135,28 @@ export default function RelatoriosScreen() {
                 </View>
                 <View style={styles.statsRow}>
                   <StatCard
+                    label="Manhã"
+                    value={report.manha}
+                    color={current?.manha_color ?? "#FFCC00"}
+                    icon="partly-sunny-outline"
+                    testID="report-manha-count"
+                  />
+                  <StatCard
+                    label="Tarde"
+                    value={report.tarde}
+                    color={current?.tarde_color ?? "#FF9500"}
+                    icon="cloudy-outline"
+                    testID="report-tarde-count"
+                  />
+                  <StatCard
                     label="Folgas"
                     value={report.folga}
                     color={colors.muted}
                     icon="cafe-outline"
                     testID="report-folga-count"
                   />
+                </View>
+                <View style={styles.statsRow}>
                   <StatCard
                     label="Férias"
                     value={report.ferias}

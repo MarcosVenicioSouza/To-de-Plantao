@@ -86,6 +86,8 @@ export function shiftDefaultHours(
 ): { start: string | null; end: string | null } {
   if (type === "SD") return { start: wp.sd_start, end: wp.sd_end };
   if (type === "SN") return { start: wp.sn_start, end: wp.sn_end };
+  if (type === "MANHA") return { start: "07:00", end: "13:00" };
+  if (type === "TARDE") return { start: "13:00", end: "19:00" };
   return { start: null, end: null };
 }
 
@@ -164,7 +166,7 @@ export function monthlyReport(
   const dates: Date[] = [];
   for (let d = 1; d <= daysInMonth; d++) dates.push(new Date(year, month, d));
   const map = mergeShifts(dates, wp, overrides);
-  let sd = 0, sn = 0, folga = 0, avulso = 0, ferias = 0, hours = 0;
+  let sd = 0, sn = 0, folga = 0, avulso = 0, ferias = 0, manha = 0, tarde = 0, hours = 0;
   for (const d of dates) {
     const info = map[fmtDate(d)];
     if (info.type === "SD") {
@@ -173,6 +175,12 @@ export function monthlyReport(
     } else if (info.type === "SN") {
       sn++;
       hours += hoursBetween(info.start_time || wp.sn_start, info.end_time || wp.sn_end);
+    } else if (info.type === "MANHA") {
+      manha++;
+      hours += hoursBetween(info.start_time || "07:00", info.end_time || "13:00");
+    } else if (info.type === "TARDE") {
+      tarde++;
+      hours += hoursBetween(info.start_time || "13:00", info.end_time || "19:00");
     } else if (info.type === "AVULSO") {
       avulso++;
       hours += hoursBetween(info.start_time, info.end_time);
@@ -180,7 +188,7 @@ export function monthlyReport(
       ferias++;
     } else folga++;
   }
-  return { sd, sn, folga, avulso, ferias, hours: Math.round(hours * 10) / 10 };
+  return { sd, sn, manha, tarde, folga, avulso, ferias, hours: Math.round(hours * 10) / 10 };
 }
 
 export const MONTHS_PT = [
@@ -257,3 +265,25 @@ export function buildHolidayMap(
   for (const h of custom) m.set(h.date, h.name);
   return m;
 }
+
+export function initialsOf(name: string): string {
+  const skip = new Set([
+    "de", "da", "das", "do", "dos", "e",
+    "the", "of", "and",
+  ]);
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w && !skip.has(w.toLowerCase()));
+  if (words.length === 0) {
+    const first = name.trim().split(/\s+/)[0] ?? "?";
+    return first.slice(0, 2).toUpperCase();
+  }
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+export const MONTHS_SHORT_PT = [
+  "Jan.", "Fev.", "Mar.", "Abr.", "Mai.", "Jun.",
+  "Jul.", "Ago.", "Set.", "Out.", "Nov.", "Dez.",
+];

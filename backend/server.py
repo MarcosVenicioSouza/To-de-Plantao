@@ -29,7 +29,7 @@ api_router = APIRouter(prefix="/api")
 
 
 # ============ Models ============
-ShiftType = Literal['SD', 'SN', 'FOLGA', 'AVULSO', 'FERIAS']
+ShiftType = Literal['SD', 'SN', 'FOLGA', 'AVULSO', 'FERIAS', 'MANHA', 'TARDE']
 CyclePattern = Literal['SD_F_SN_F_F', 'SD_SN_F_F', 'SD_F_SN_F']  # 5-day, 4-day-back-to-back, legacy 4-day 12x36
 
 
@@ -73,6 +73,8 @@ class WorkplaceCreate(BaseModel):
     shift_day_color: str = '#007AFF'
     shift_night_color: str = '#FF3B30'
     avulso_color: str = '#34C759'
+    manha_color: str = '#FFCC00'
+    tarde_color: str = '#FF9500'
     is_avulso_only: bool = False
     vacations: List[VacationPeriod] = []
 
@@ -90,6 +92,8 @@ class WorkplaceUpdate(BaseModel):
     shift_day_color: Optional[str] = None
     shift_night_color: Optional[str] = None
     avulso_color: Optional[str] = None
+    manha_color: Optional[str] = None
+    tarde_color: Optional[str] = None
     is_avulso_only: Optional[bool] = None
     vacations: Optional[List[VacationPeriod]] = None
 
@@ -109,6 +113,8 @@ class Workplace(BaseModel):
     shift_day_color: str
     shift_night_color: str
     avulso_color: str
+    manha_color: str
+    tarde_color: str
     is_avulso_only: bool
     vacations: List[VacationPeriod]
     created_at: str
@@ -145,6 +151,36 @@ class Holiday(BaseModel):
     user_id: str
     date: str
     name: str
+
+
+class ExtraEventCreate(BaseModel):
+    date: str
+    label: str = Field(min_length=1, max_length=40)
+    color: str = "#34C759"
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    note: Optional[str] = None
+
+
+class ExtraEventUpdate(BaseModel):
+    date: Optional[str] = None
+    label: Optional[str] = None
+    color: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    note: Optional[str] = None
+
+
+class ExtraEvent(BaseModel):
+    id: str
+    user_id: str
+    date: str
+    label: str
+    color: str
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    note: Optional[str] = None
+    created_at: str
 
 
 # ============ Auth ============
@@ -186,6 +222,8 @@ async def get_current_user(authorization: Optional[str] = Header(default=None)) 
 def wp_defaults(doc: dict) -> dict:
     doc.setdefault('cycle_pattern', 'SD_F_SN_F_F')
     doc.setdefault('avulso_color', '#34C759')
+    doc.setdefault('manha_color', '#FFCC00')
+    doc.setdefault('tarde_color', '#FF9500')
     doc.setdefault('is_avulso_only', False)
     doc.setdefault('vacations', [])
     return doc
@@ -241,6 +279,8 @@ async def create_workplace(body: WorkplaceCreate, user=Depends(get_current_user)
         'shift_day_color': body.shift_day_color,
         'shift_night_color': body.shift_night_color,
         'avulso_color': body.avulso_color,
+        'manha_color': body.manha_color,
+        'tarde_color': body.tarde_color,
         'is_avulso_only': body.is_avulso_only,
         'vacations': [v.model_dump() for v in body.vacations],
         'created_at': datetime.now(timezone.utc).isoformat(),
@@ -339,6 +379,50 @@ async def create_holiday(body: HolidayCreate, user=Depends(get_current_user)):
 @api_router.delete('/holidays/{hid}', status_code=204)
 async def delete_holiday(hid: str, user=Depends(get_current_user)):
     await db.holidays.delete_one({'id': hid, 'user_id': user['id']})
+    return None
+
+
+# ============ Extra Events (plantão aleatório) ============
+@api_router.get('/events', response_model=List[ExtraEvent])
+async def list_events(year: Optional[int] = None, month: Optional[int] = None, user=Depends(get_current_user)):
+    q: dict = {'user_id': user['id']}
+    if year and month:
+        q['date'] = {'$regex': f'^{year:04d}-{month:02d}-'}
+    docs = await db.extra_events.find(q, {'_id': 0}).to_list(2000)
+    return [ExtraEvent(**d) for d in docs]
+
+
+@api_router.post('/events', response_model=ExtraEvent, status_code=201)
+async def create_event(body: ExtraEventCreate, user=Depends(get_current_user)):
+    eid = str(uuid.uuid4())
+    doc = {
+        'id': eid, 'user_id': user['id'],
+        'date': body.date, 'label': body.label.strip(), 'color': body.color,
+        'start_time': body.start_time, 'end_time': body.end_time,
+        'note': body.note,
+        'created_at': datetime.now(timezone.utc).isoformat(),
+    }
+    await db.extra_events.insert_one(doc)
+    return ExtraEvent(**doc)
+
+
+@api_router.put('/events/{eid}', response_model=ExtraEvent)
+async def update_event(eid: str, body: ExtraEventUpdate, user=Depends(get_current_user)):
+    existing = await db.extra_events.find_one({'id': eid, 'user_id': user['id']}, {'_id': 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail='Evento não encontrado')
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if updates:
+        if 'label' in updates:
+            updates['label'] = updates['label'].strip()
+        await db.extra_events.update_one({'id': eid, 'user_id': user['id']}, {'$set': updates})
+        existing.update(updates)
+    return ExtraEvent(**existing)
+
+
+@api_router.delete('/events/{eid}', status_code=204)
+async def delete_event(eid: str, user=Depends(get_current_user)):
+    await db.extra_events.delete_one({'id': eid, 'user_id': user['id']})
     return None
 
 
