@@ -1,0 +1,162 @@
+{
+  "app_name": "EscalaFácil",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "Um utilitário limpo, focado e confiável que coloca a escala de enfermagem em primeiro plano sem distrações.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#111111",
+    "surfaceSecondary": "#F2F2F7",
+    "onSurfaceSecondary": "#1C1C1E",
+    "surfaceTertiary": "#E5E5EA",
+    "onSurfaceTertiary": "#3A3A3C",
+    "surfaceInverse": "#111111",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#32827A",
+    "onBrand": "#FFFFFF",
+    "brandPrimary": "#32827A",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#EAF2F1",
+    "onBrandSecondary": "#1F524C",
+    "brandTertiary": "#D6E5E3",
+    "onBrandTertiary": "#296B64",
+    "success": "#34C759",
+    "onSuccess": "#FFFFFF",
+    "warning": "#FF9500",
+    "onWarning": "#FFFFFF",
+    "error": "#FF3B30",
+    "onError": "#FFFFFF",
+    "info": "#007AFF",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E5EA",
+    "borderStrong": "#C7C7CC",
+    "divider": "#C6C6C8",
+    "muted": "#8E8E93",
+    "shiftDay": "#007AFF",
+    "onShiftDay": "#FFFFFF",
+    "shiftNight": "#FF3B30",
+    "onShiftNight": "#FFFFFF"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical breathing room for readability. Clear grouping of elements. Use exact scale tokens.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Use on the bottom tab bar when content scrolls behind it",
+      "Use on bottom-sheet headers and drag handles",
+      "Apply to sticky headers if overlapping with the calendar grid"
+    ],
+    "dont's": [
+      "Never blur body text regions",
+      "Do not use on regular list rows or data entry form fields"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Home / Calendário",
+      "purpose": "A full-month view showing the 12x36 shift sequence at a glance, allowing users to tap any day to swap/edit.",
+      "states": {
+        "loading": "A skeleton of the monthly grid with a subtle pulse.",
+        "empty": "No initial shift set. Shows a prominent CTA: 'Configurar minha escala 12x36'.",
+        "error": "Failed to load schedule. Button to retry."
+      },
+      "layout": "Sticky header with Month/Year selector. The core is a responsive 7-column calendar grid. Each cell shows the day number and a color block/dot representing SD (BLUE), SN (RED), or Folga (Grey). Below the calendar, show a 'Próximo Plantão' (Next Shift) card with a glass effect."
+    },
+    {
+      "name": "Editar Plantão (Bottom Sheet)",
+      "purpose": "Contextual action sheet to swap a shift (SD to SN, or Vice-Versa) and edit working hours for a specific day.",
+      "states": {
+        "loading": "Centered loading spinner when saving changes.",
+        "empty": "N/A - opens with pre-filled context of the selected day.",
+        "error": "Error updating shift with a retry option."
+      },
+      "layout": "Triggered from the Home Calendar. Header with the selected Date. A segmented control or large pill buttons for [SD (Blue), SN (Red), Folga]. Below that, a form with Start and End time pickers, and an optional 'Colega de troca' (Colleague swap) text input. A sticky primary button 'Salvar Alteração' pinned to the bottom."
+    },
+    {
+      "name": "Relatórios",
+      "purpose": "View calculated monthly work hours and shifts completed across multiple workplaces.",
+      "states": {
+        "loading": "Skeleton list of months.",
+        "empty": "Empty state illustration with 'Nenhum plantão registrado este mês'.",
+        "error": "Failed to calculate hours. Retry."
+      },
+      "layout": "A scrollable list of months with summarized data. Each row shows Total Hours, number of SD shifts, and number of SN shifts. Uses clean iOS list grouping with native spacing."
+    },
+    {
+      "name": "Locais de Trabalho",
+      "purpose": "Manage multiple hospitals/clinics, setting distinct colors or labels for each location's calendar layer.",
+      "states": {
+        "loading": "Spinner centered.",
+        "empty": "Shows an illustration of a hospital and 'Adicione seu primeiro local de trabalho'.",
+        "error": "Cannot fetch workplaces. Retry."
+      },
+      "layout": "A simple list view with cards for each workplace (e.g., 'Hospital São Lucas'). Floating Action Button with glass effect to 'Add Novo Local'."
+    }
+  ],
+  "images": {
+    "empty_calendar": {
+      "url": "https://images.unsplash.com/photo-1578625155481-7bc40a6481b6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzN8MHwxfHNlYXJjaHwxfHxlbXB0eSUyMGNhbGVuZGFyJTIwZGVzayUyMGZsYXRsYXl8ZW58MHx8fHwxNzg5OTk4MzgzfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Empty calendar flatlay indicating no data"
+    },
+    "hospital_placeholder": {
+      "url": "https://images.unsplash.com/photo-1764885449345-d0d6629bf7bf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTB8MHwxfHNlYXJjaHwxfHxtZWRpY2FsJTIwaG9zcGl0YWwlMjBidWlsZGluZyUyMGxvZ28lMjBpY29ufGVufDB8fHx8MTc4OTk5ODM3OXww&ixlib=rb-4.1.0&q=85",
+      "alt": "Hospital building emergency sign"
+    }
+  },
+  "haptics": {
+    "event_map": {
+      "tap_calendar_day": "selection",
+      "save_shift_change": "notification_success",
+      "toggle_workplace": "impact_light",
+      "error_action": "notification_error"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the user's color requirement for shifts: SD (Shift Day) must be rendered in BLUE (`shiftDay`: #007AFF) and SN (Shift Night) must be rendered in RED (`shiftNight`: #FF3B30). This overrides any general color bans.",
+    "Implement the calendar layout prioritizing scanability. Do not use generic lists for the schedule; use a month grid.",
+    "Use `@gorhom/bottom-sheet` for the shift edit/swap interactions to avoid navigating users away from the calendar context.",
+    "Apply iOS-native UI aesthetics (Personality 1): use clear grouping for list items, generous padding (e.g., md or lg) inside cards, and keep the typography highly legible (Plus Jakarta Sans).",
+    "Keep touch targets at least 44x44pt on the calendar grid.",
+    "Do not use emojis in the UI text (e.g., no hospital or calendar emojis).",
+    "Make sure all wording is in Portuguese (Brazil)."
+  ]
+}
