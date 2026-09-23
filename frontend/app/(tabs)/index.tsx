@@ -41,6 +41,7 @@ import { DayActionsSheet, DayActionsSheetRef } from "@/src/components/day-action
 import { Alert, Linking, Platform } from "react-native";
 import { captureRef } from "react-native-view-shot";
 import * as Sharing from "expo-sharing";
+import { usePalette } from "@/src/palettes";
 
 type DayEvent =
   | {
@@ -57,6 +58,7 @@ export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
   const styles = useStyles();
   const { colors } = useTheme();
+  const { palette } = usePalette();
   const router = useRouter();
   const { workplaces, loading: wpLoading, refresh: refreshWps } = useWorkplaces();
 
@@ -313,13 +315,22 @@ export default function CalendarScreen() {
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: palette.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <View style={styles.monthRow}>
+        <View
+          style={[
+            styles.glassBar,
+            {
+              backgroundColor: palette.cardTint,
+              borderColor: palette.cardBorder,
+              shadowColor: palette.shadowColor,
+            },
+          ]}
+        >
           <Pressable testID="prev-month" onPress={prevMonth} style={styles.monthBtn} hitSlop={8}>
-            <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
+            <Ionicons name="chevron-back" size={22} color={palette.headerText} />
           </Pressable>
-          <Text style={styles.monthLabel} testID="month-label">
+          <Text style={[styles.monthLabel, { color: palette.headerText }]} testID="month-label">
             {MONTHS_SHORT_PT[month]} {year}
           </Text>
           <View style={{ flexDirection: "row" }}>
@@ -329,18 +340,32 @@ export default function CalendarScreen() {
               style={styles.monthBtn}
               hitSlop={8}
             >
-              <Ionicons name="logo-whatsapp" size={22} color={colors.success} />
+              <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
             </Pressable>
             <Pressable testID="next-month" onPress={nextMonth} style={styles.monthBtn} hitSlop={8}>
-              <Ionicons name="chevron-forward" size={22} color={colors.onSurface} />
+              <Ionicons name="chevron-forward" size={22} color={palette.headerText} />
             </Pressable>
           </View>
         </View>
-        <View style={styles.weekRow}>
+        <View
+          style={[
+            styles.glassBar,
+            styles.weekBar,
+            {
+              backgroundColor: palette.cardTint,
+              borderColor: palette.cardBorder,
+              shadowColor: palette.shadowColor,
+            },
+          ]}
+        >
           {WEEKDAYS_PT.map((d, i) => (
             <Text
               key={i}
-              style={[styles.weekDay, (i === 0 || i === 6) && { color: colors.error }]}
+              style={[
+                styles.weekDay,
+                { color: palette.mutedText },
+                (i === 0 || i === 6) && { color: palette.weekendAccent, fontWeight: "700" },
+              ]}
             >
               {d}
             </Text>
@@ -351,9 +376,10 @@ export default function CalendarScreen() {
       <ScrollView
         contentContainerStyle={{
           paddingBottom: insets.bottom + 120,
+          paddingHorizontal: spacing.sm,
         }}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.brandPrimary} />
+          <RefreshControl refreshing={loading} onRefresh={load} tintColor={palette.headerText} />
         }
       >
         <View style={styles.grid}>
@@ -363,7 +389,6 @@ export default function CalendarScreen() {
             const inMonth = d.getMonth() === month;
             const isToday = fmtDate(new Date()) === iso;
             const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-            const startNewRow = idx % 7 === 0;
             return (
               <Pressable
                 key={iso}
@@ -371,44 +396,76 @@ export default function CalendarScreen() {
                 onPress={() => openDay(d)}
                 style={[
                   styles.cell,
-                  startNewRow && styles.cellFirst,
-                  { opacity: inMonth ? 1 : 0.35 },
+                  { opacity: inMonth ? 1 : 0.55 },
                 ]}
               >
-                <View style={[styles.dayNumWrap, isToday && styles.todayWrap]}>
+                <View
+                  style={[
+                    styles.glassCell,
+                    {
+                      backgroundColor: palette.cardTint,
+                      borderColor: palette.cardBorder,
+                      shadowColor: palette.shadowColor,
+                    },
+                    isToday && {
+                      borderColor: palette.weekendAccent,
+                      borderWidth: 2,
+                    },
+                  ]}
+                >
+                  {/* Glass top highlight */}
+                  <View
+                    pointerEvents="none"
+                    style={[styles.glassHighlight, { backgroundColor: palette.cardHighlight }]}
+                  />
                   <Text
                     style={[
                       styles.dayNum,
-                      isWeekend && { color: colors.error },
-                      isToday && { color: colors.onBrandPrimary },
+                      { color: palette.primaryText },
+                      isWeekend && { color: palette.weekendAccent },
+                      !inMonth && { color: palette.mutedText },
                     ]}
                   >
                     {d.getDate()}
                   </Text>
-                </View>
-                <View style={styles.eventsList}>
-                  {events.slice(0, 4).map((ev, i) => {
-                    if (ev.kind === "holiday") {
+                  <View style={styles.eventsList}>
+                    {events.slice(0, 4).map((ev, i) => {
+                      if (ev.kind === "holiday") {
+                        return (
+                          <View
+                            key={`h-${i}`}
+                            style={[
+                              styles.holidayChip,
+                              { backgroundColor: palette.holidayBg },
+                            ]}
+                          >
+                            <Text
+                              style={[styles.holidayText, { color: palette.holidayText }]}
+                              numberOfLines={2}
+                            >
+                              {ev.name}
+                            </Text>
+                          </View>
+                        );
+                      }
                       return (
-                        <View key={`h-${i}`} style={styles.holidayChip}>
-                          <Text style={styles.holidayText} numberOfLines={2}>
-                            {ev.name}
+                        <View key={`e-${i}`} style={styles.eventRow}>
+                          <View style={[styles.eventBar, { backgroundColor: ev.color }]} />
+                          <Text
+                            style={[styles.eventLabel, { color: palette.primaryText }]}
+                            numberOfLines={1}
+                          >
+                            {ev.label}
                           </Text>
                         </View>
                       );
-                    }
-                    return (
-                      <View key={`e-${i}`} style={styles.eventRow}>
-                        <View style={[styles.eventBar, { backgroundColor: ev.color }]} />
-                        <Text style={styles.eventLabel} numberOfLines={1}>
-                          {ev.label}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                  {events.length > 4 ? (
-                    <Text style={styles.moreText}>+{events.length - 4}</Text>
-                  ) : null}
+                    })}
+                    {events.length > 4 ? (
+                      <Text style={[styles.moreText, { color: palette.mutedText }]}>
+                        +{events.length - 4}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
               </Pressable>
             );
@@ -538,11 +595,27 @@ function pickInfo(d: Date, wp: Workplace, overrides: ShiftOverride[]): ShiftInfo
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
   header: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    gap: spacing.xs,
+  },
+  glassBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  weekBar: {
+    marginTop: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   monthRow: {
     flexDirection: "row",
@@ -555,28 +628,40 @@ const useStyles = makeStyles((colors) => ({
     alignItems: "center",
     justifyContent: "center",
   },
-  monthLabel: { color: colors.onSurface, fontSize: 22, fontWeight: "800" },
+  monthLabel: { fontSize: 20, fontWeight: "800" },
   weekRow: { flexDirection: "row", marginTop: spacing.xs },
   weekDay: {
     flex: 1,
     textAlign: "center",
-    color: colors.muted,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
   },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
+  grid: { flexDirection: "row", flexWrap: "wrap", paddingTop: spacing.sm },
   cell: {
     width: `${100 / 7}%`,
-    minHeight: 92,
-    paddingHorizontal: 3,
-    paddingVertical: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    aspectRatio: 0.78,
+    padding: 4,
   },
-  cellFirst: {},
+  glassCell: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 5,
+    paddingVertical: 6,
+    overflow: "hidden",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  glassHighlight: {
+    position: "absolute",
+    top: 0, left: 0, right: 0,
+    height: "45%",
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    opacity: 0.6,
+  },
   dayNumWrap: {
     alignSelf: "flex-start",
     borderRadius: radius.sm,
@@ -584,12 +669,12 @@ const useStyles = makeStyles((colors) => ({
     paddingVertical: 1,
   },
   todayWrap: { backgroundColor: colors.brandPrimary },
-  dayNum: { color: colors.onSurface, fontSize: 13, fontWeight: "700" },
-  eventsList: { marginTop: 2, gap: 2 },
+  dayNum: { fontSize: 15, fontWeight: "800" },
+  eventsList: { marginTop: 3, gap: 3 },
   eventRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
+    gap: 4,
   },
   eventBar: {
     width: 3,
@@ -598,22 +683,19 @@ const useStyles = makeStyles((colors) => ({
   },
   eventLabel: {
     flex: 1,
-    color: colors.onSurface,
     fontSize: 10,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   holidayChip: {
-    backgroundColor: "rgba(52,199,89,0.18)",
     borderRadius: radius.sm,
     paddingHorizontal: 4,
     paddingVertical: 2,
   },
   holidayText: {
-    color: colors.success,
     fontSize: 10,
     fontWeight: "700",
   },
-  moreText: { color: colors.muted, fontSize: 10, fontWeight: "600", marginTop: 1 },
+  moreText: { fontSize: 10, fontWeight: "600", marginTop: 1 },
 
   fab: {
     position: "absolute",

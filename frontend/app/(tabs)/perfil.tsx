@@ -10,6 +10,7 @@ import { useWorkplaces } from "@/src/contexts/workplaces";
 import { api } from "@/src/api/client";
 import { computeCycleShift, fmtDate, shiftDefaultHours } from "@/src/utils/shifts";
 import { useRouter } from "expo-router";
+import { PALETTES, PaletteId, usePalette } from "@/src/palettes";
 
 const NOTIF_KEY = "escala_notif_enabled";
 
@@ -20,6 +21,7 @@ export default function PerfilScreen() {
   const { user, logout } = useAuth();
   const { current, workplaces } = useWorkplaces();
   const router = useRouter();
+  const { paletteId, setPaletteId } = usePalette();
   const [notifOn, setNotifOn] = useState(false);
   const [scheduling, setScheduling] = useState(false);
 
@@ -128,6 +130,36 @@ export default function PerfilScreen() {
             <Text testID="profile-name" style={styles.userName}>{user?.name}</Text>
             <Text testID="profile-email" style={styles.userEmail}>{user?.email}</Text>
           </View>
+        </View>
+
+        <Text style={styles.sectionHead}>Aparência</Text>
+        <View style={styles.paletteRow}>
+          {(Object.keys(PALETTES) as PaletteId[]).map((id) => {
+            const p = PALETTES[id];
+            const active = paletteId === id;
+            return (
+              <Pressable
+                key={id}
+                testID={`palette-${id}`}
+                onPress={() => setPaletteId(id)}
+                style={[
+                  styles.paletteChip,
+                  { backgroundColor: p.swatch },
+                  active && { borderColor: colors.brandPrimary, borderWidth: 2 },
+                ]}
+              >
+                <Text style={styles.paletteLabel}>{p.label}</Text>
+                {active ? (
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={18}
+                    color={colors.brandPrimary}
+                    style={{ position: "absolute", top: 4, right: 4 }}
+                  />
+                ) : null}
+              </Pressable>
+            );
+          })}
         </View>
 
         <Text style={styles.sectionHead}>Preferências</Text>
@@ -253,5 +285,24 @@ const useStyles = makeStyles((colors) => ({
     textAlign: "center",
     color: colors.muted,
     fontSize: 12,
+  },
+  paletteRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  paletteChip: {
+    flex: 1,
+    minHeight: 72,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    justifyContent: "flex-end",
+  },
+  paletteLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.onSurface,
   },
 }));

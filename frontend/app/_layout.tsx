@@ -11,6 +11,7 @@ import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
 import { AuthProvider, useAuth } from "@/src/contexts/auth";
 import { WorkplacesProvider } from "@/src/contexts/workplaces";
+import { PaletteProvider } from "@/src/palettes";
 
 LogBox.ignoreAllLogs(true);
 
@@ -38,10 +39,12 @@ export default function RootLayout() {
             <KeyboardProvider>
               <AuthProvider>
                 <WorkplacesProvider>
-                  <StatusBar style="dark" />
-                  <AuthGate>
-                    <Stack screenOptions={{ headerShown: false }} />
-                  </AuthGate>
+                  <PaletteProvider>
+                    <StatusBar style="dark" />
+                    <AuthGate>
+                      <Stack screenOptions={{ headerShown: false }} />
+                    </AuthGate>
+                  </PaletteProvider>
                 </WorkplacesProvider>
               </AuthProvider>
             </KeyboardProvider>
