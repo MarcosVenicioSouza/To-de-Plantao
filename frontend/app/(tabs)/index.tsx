@@ -4,8 +4,10 @@ import {
   Text,
   Pressable,
   ScrollView,
-  ActivityIndicator,
   RefreshControl,
+  Alert,
+  Linking,
+  Platform,
 } from "react-native";
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,8 +30,6 @@ import {
   computeCycleShift,
   isOnVacation,
   shiftDefaultHours,
-  monthGrid,
-  parseISODate,
   buildHolidayMap,
   initialsOf,
   hoursBetween,
@@ -38,7 +38,6 @@ import {
 import { EditShiftSheet, EditShiftSheetRef } from "@/src/components/edit-shift-sheet";
 import { EventSheet, EventSheetRef } from "@/src/components/event-sheet";
 import { DayActionsSheet, DayActionsSheetRef } from "@/src/components/day-actions-sheet";
-import { Alert, Linking, Platform } from "react-native";
 import { captureRef } from "react-native-view-shot";
 import * as Sharing from "expo-sharing";
 import { usePalette } from "@/src/palettes";
@@ -60,7 +59,7 @@ export default function CalendarScreen() {
   const { colors } = useTheme();
   const { palette } = usePalette();
   const router = useRouter();
-  const { workplaces, loading: wpLoading, refresh: refreshWps } = useWorkplaces();
+  const { workplaces, loading: wpLoading } = useWorkplaces();
 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -100,7 +99,20 @@ export default function CalendarScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month, workplaces.map((w) => w.id).join(",")]);
 
-  const grid = useMemo(() => monthGrid(year, month), [year, month]);
+  const grid = useMemo(() => {
+    const first = new Date(year, month, 1);
+    const startOffset = first.getDay(); // 0=Sun
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: { date: Date | null; key: string }[] = [];
+    for (let i = 0; i < startOffset; i++) {
+      cells.push({ date: null, key: `pad-${i}` });
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dt = new Date(year, month, d);
+      cells.push({ date: dt, key: fmtDate(dt) });
+    }
+    return cells;
+  }, [year, month]);
   const holidayMap = useMemo(
     () => buildHolidayMap([year, year + 1], customHolidays),
     [year, customHolidays]
@@ -129,7 +141,9 @@ export default function CalendarScreen() {
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, DayEvent[]>();
-    for (const d of grid) {
+    for (const item of grid) {
+      const d = item.date;
+      if (!d) continue;
       const iso = fmtDate(d);
       const list: DayEvent[] = [];
 
@@ -383,10 +397,13 @@ export default function CalendarScreen() {
         }
       >
         <View style={styles.grid}>
-          {grid.map((d, idx) => {
+          {grid.map((item) => {
+            const d = item.date;
+            if (!d) {
+              return <View key={item.key} style={styles.cell} pointerEvents="none" />;
+            }
             const iso = fmtDate(d);
             const events = eventsByDate.get(iso) ?? [];
-            const inMonth = d.getMonth() === month;
             const isToday = fmtDate(new Date()) === iso;
             const isWeekend = d.getDay() === 0 || d.getDay() === 6;
             return (
@@ -394,10 +411,7 @@ export default function CalendarScreen() {
                 key={iso}
                 testID={`day-${iso}`}
                 onPress={() => openDay(d)}
-                style={[
-                  styles.cell,
-                  { opacity: inMonth ? 1 : 0.55 },
-                ]}
+                style={styles.cell}
               >
                 <View
                   style={[
@@ -423,7 +437,6 @@ export default function CalendarScreen() {
                       styles.dayNum,
                       { color: palette.primaryText },
                       isWeekend && { color: palette.weekendAccent },
-                      !inMonth && { color: palette.mutedText },
                     ]}
                   >
                     {d.getDate()}
@@ -512,16 +525,16 @@ export default function CalendarScreen() {
             ))}
           </View>
           <View style={styles.captureGrid}>
-            {grid.map((d) => {
+            {grid.map((item) => {
+              const d = item.date;
+              if (!d) {
+                return <View key={`cap-${item.key}`} style={styles.captureCell} />;
+              }
               const iso = fmtDate(d);
               const events = eventsByDate.get(iso) ?? [];
-              const inMonth = d.getMonth() === month;
               const isWeekend = d.getDay() === 0 || d.getDay() === 6;
               return (
-                <View
-                  key={`cap-${iso}`}
-                  style={[styles.captureCell, { opacity: inMonth ? 1 : 0.35 }]}
-                >
+                <View key={`cap-${iso}`} style={styles.captureCell}>
                   <Text
                     style={[styles.captureDay, isWeekend && { color: colors.error }]}
                   >
@@ -639,7 +652,7 @@ const useStyles = makeStyles((colors) => ({
   grid: { flexDirection: "row", flexWrap: "wrap", paddingTop: spacing.sm },
   cell: {
     width: `${100 / 7}%`,
-    aspectRatio: 0.78,
+    aspectRatio: 0.62,
     padding: 4,
   },
   glassCell: {
