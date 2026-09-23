@@ -21,12 +21,18 @@ export const CYCLE_PATTERNS: Record<CyclePattern, Slot[]> = {
   SD_SN_F_F: ["FIRST", "OPPOSITE", "FOLGA", "FOLGA"],
   // 12x36 clássico
   SD_F_SN_F: ["FIRST", "FOLGA", "OPPOSITE", "FOLGA"],
+  // SD Folga Folga SN Folga Folga (6 dias)
+  SD_F_F_SN_F_F: ["FIRST", "FOLGA", "FOLGA", "OPPOSITE", "FOLGA", "FOLGA"],
+  // SD Folga Folga SD Folga Folga (6 dias, mesmo turno duas vezes)
+  SD_F_F_SD_F_F: ["FIRST", "FOLGA", "FOLGA", "FIRST", "FOLGA", "FOLGA"],
 };
 
 export const CYCLE_LABELS: Record<CyclePattern, string> = {
   SD_F_SN_F_F: "5 dias: SD → Folga → SN → Folga → Folga",
   SD_SN_F_F: "4 dias: SD → SN → Folga → Folga",
   SD_F_SN_F: "4 dias (12x36): SD → Folga → SN → Folga",
+  SD_F_F_SN_F_F: "6 dias: SD → Folga → Folga → SN → Folga → Folga",
+  SD_F_F_SD_F_F: "6 dias: SD → Folga → Folga → SD → Folga → Folga",
 };
 
 // -------- date helpers --------

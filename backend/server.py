@@ -34,7 +34,7 @@ api_router = APIRouter(prefix="/api")
 
 # ============ Models ============
 ShiftType = Literal['SD', 'SN', 'FOLGA', 'AVULSO', 'FERIAS', 'MANHA', 'TARDE']
-CyclePattern = Literal['SD_F_SN_F_F', 'SD_SN_F_F', 'SD_F_SN_F']  # 5-day, 4-day-back-to-back, legacy 4-day 12x36
+CyclePattern = Literal['SD_F_SN_F_F', 'SD_SN_F_F', 'SD_F_SN_F', 'SD_F_F_SN_F_F', 'SD_F_F_SD_F_F']  # 5-day, 4-day back-to-back, legacy 4-day 12x36, 6-day with double folgas, 6-day same-shift
 
 
 class RegisterBody(BaseModel):

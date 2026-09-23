@@ -36,7 +36,12 @@ const storage = {
 
 export const tokenStore = storage;
 
-export type CyclePattern = "SD_F_SN_F_F" | "SD_SN_F_F" | "SD_F_SN_F";
+export type CyclePattern =
+  | "SD_F_SN_F_F"
+  | "SD_SN_F_F"
+  | "SD_F_SN_F"
+  | "SD_F_F_SN_F_F"
+  | "SD_F_F_SD_F_F";
 export type VacationPeriod = { start: string; end: string };
 
 export type Workplace = {
