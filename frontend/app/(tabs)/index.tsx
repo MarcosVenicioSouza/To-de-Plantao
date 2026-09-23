@@ -467,6 +467,8 @@ export default function CalendarScreen() {
                           <Text
                             style={[styles.eventLabel, { color: palette.primaryText }]}
                             numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.75}
                           >
                             {ev.label}
                           </Text>
@@ -659,7 +661,7 @@ const useStyles = makeStyles((colors) => ({
     flex: 1,
     borderRadius: 14,
     borderWidth: 1,
-    paddingHorizontal: 5,
+    paddingHorizontal: 3,
     paddingVertical: 6,
     overflow: "hidden",
     shadowOffset: { width: 0, height: 4 },
@@ -687,17 +689,18 @@ const useStyles = makeStyles((colors) => ({
   eventRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 3,
   },
   eventBar: {
-    width: 3,
-    height: 14,
+    width: 2,
+    height: 12,
     borderRadius: 2,
   },
   eventLabel: {
     flex: 1,
     fontSize: 10,
     fontWeight: "700",
+    letterSpacing: -0.2,
   },
   holidayChip: {
     borderRadius: radius.sm,
