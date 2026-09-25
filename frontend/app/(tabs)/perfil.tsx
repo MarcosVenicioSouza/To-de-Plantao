@@ -3,7 +3,6 @@ import { View, Text, Pressable, Switch, ScrollView, Alert, Platform } from "reac
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Notifications from "expo-notifications";
 import { makeStyles, spacing, radius, useTheme } from "@/src/theme";
 import { useAuth } from "@/src/contexts/auth";
 import { useWorkplaces } from "@/src/contexts/workplaces";
@@ -11,6 +10,11 @@ import { api } from "@/src/api/client";
 import { computeCycleShift, fmtDate, shiftDefaultHours } from "@/src/utils/shifts";
 import { useRouter } from "expo-router";
 import { PALETTES, PaletteId, usePalette } from "@/src/palettes";
+import {
+  cancelAllReminders,
+  ensureNotificationsReady,
+  scheduleShiftReminder,
+} from "@/src/utils/notifications";
 
 const NOTIF_KEY = "escala_notif_enabled";
 
@@ -35,8 +39,8 @@ export default function PerfilScreen() {
         Alert.alert("Indisponível", "Notificações locais funcionam no dispositivo (iOS/Android).");
         return;
       }
-      const perm = await Notifications.requestPermissionsAsync();
-      if (perm.status !== "granted") {
+      const granted = await ensureNotificationsReady();
+      if (!granted) {
         Alert.alert("Permissão negada", "Habilite notificações nas configurações do sistema.");
         return;
       }
@@ -44,7 +48,7 @@ export default function PerfilScreen() {
       setNotifOn(true);
       await rescheduleAll();
     } else {
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      await cancelAllReminders();
       await AsyncStorage.setItem(NOTIF_KEY, "0");
       setNotifOn(false);
     }
@@ -54,32 +58,45 @@ export default function PerfilScreen() {
     if (Platform.OS === "web") return;
     setScheduling(true);
     try {
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      await cancelAllReminders();
       const now = new Date();
+      let count = 0;
+      // Schedule the next 60 days across all workplaces.
       for (const wp of workplaces) {
-        const overrides = await api.listOverrides(wp.id, now.getFullYear(), now.getMonth() + 1);
-        const ovMap = new Map(overrides.map((o) => [o.date, o]));
-        for (let i = 0; i < 30; i++) {
+        const months = new Set<string>();
+        for (let i = 0; i < 60; i++) {
+          const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+          months.add(`${d.getFullYear()}-${d.getMonth() + 1}`);
+        }
+        const overrideList = [] as Awaited<ReturnType<typeof api.listOverrides>>;
+        for (const key of months) {
+          const [y, m] = key.split("-").map(Number);
+          const arr = await api.listOverrides(wp.id, y, m).catch(() => []);
+          overrideList.push(...arr);
+        }
+        const ovMap = new Map(overrideList.map((o) => [o.date, o]));
+        for (let i = 0; i < 60; i++) {
           const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
           const iso = fmtDate(d);
           const o = ovMap.get(iso);
           const t = o ? o.shift_type : computeCycleShift(d, wp);
-          if (t === "FOLGA") continue;
-          const h = o ? { start: o.start_time, end: o.end_time } : shiftDefaultHours(t, wp);
+          if (t === "FOLGA" || t === "FERIAS") continue;
+          const h = o
+            ? { start: o.start_time, end: o.end_time }
+            : shiftDefaultHours(t, wp);
           if (!h.start) continue;
           const [hh, mm] = h.start.split(":").map((v) => parseInt(v, 10));
-          const trigger = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm - 60);
-          if (trigger.getTime() <= Date.now()) continue;
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: `Plantão ${t} em 1h`,
-              body: `${wp.name} • ${h.start} — ${h.end}`,
-            },
-            trigger: { date: trigger } as any,
-          });
+          const trigger = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm);
+          trigger.setHours(trigger.getHours() - 1);
+          const id = await scheduleShiftReminder(
+            trigger,
+            `Plantão ${t} em 1h`,
+            `${wp.name} • ${h.start} — ${h.end}`
+          );
+          if (id) count++;
         }
       }
-      Alert.alert("Pronto", "Lembretes agendados para os próximos 30 dias.");
+      Alert.alert("Pronto", `${count} lembretes agendados para os próximos 60 dias.`);
     } catch (e: any) {
       Alert.alert("Erro", e.message ?? "Não foi possível agendar");
     } finally {
@@ -217,7 +234,7 @@ export default function PerfilScreen() {
         </Pressable>
 
         <Text style={styles.legal}>
-          EscalaFácil • Feito para técnicos de enfermagem
+          Desenvolvido por: Marcos Venício S. De Cerqueira
         </Text>
       </ScrollView>
     </View>

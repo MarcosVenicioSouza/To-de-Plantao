@@ -432,18 +432,26 @@ export default function CalendarScreen() {
                     pointerEvents="none"
                     style={[styles.glassHighlight, { backgroundColor: palette.cardHighlight }]}
                   />
-                  <Text
+                  <View
                     style={[
-                      styles.dayNum,
-                      { color: palette.primaryText },
-                      isWeekend && { color: palette.weekendAccent },
-                      (eventsByDate.get(iso) ?? []).some((e) => e.kind === "holiday") && {
-                        color: palette.holidayText,
-                      },
+                      styles.dayNumWrap,
+                      (eventsByDate.get(iso) ?? []).some((e) => e.kind === "holiday") &&
+                        styles.holidayNumWrap,
                     ]}
                   >
-                    {d.getDate()}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.dayNum,
+                        { color: palette.primaryText },
+                        isWeekend && { color: palette.weekendAccent },
+                        (eventsByDate.get(iso) ?? []).some((e) => e.kind === "holiday") && {
+                          color: "#DC2626",
+                        },
+                      ]}
+                    >
+                      {d.getDate()}
+                    </Text>
+                  </View>
                   <View style={styles.eventsList}>
                     {events
                       .filter((ev) => ev.kind !== "holiday")
@@ -677,6 +685,13 @@ const useStyles = makeStyles((colors) => ({
     borderRadius: radius.sm,
     paddingHorizontal: 5,
     paddingVertical: 1,
+  },
+  holidayNumWrap: {
+    borderWidth: 1.5,
+    borderColor: "#DC2626",
+    borderRadius: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 0,
   },
   todayWrap: { backgroundColor: colors.brandPrimary },
   dayNum: { fontSize: 15, fontWeight: "800" },
