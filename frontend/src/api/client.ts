@@ -38,10 +38,11 @@ export const tokenStore = storage;
 
 export type CyclePattern =
   | "SD_F_SN_F_F"
+  | "SD_SN_F_F_F"
   | "SD_SN_F_F"
-  | "SD_F_SN_F"
   | "SD_F_F_SN_F_F"
-  | "SD_F_F_SD_F_F";
+  | "SD_F_F_SD_F_F"
+  | "SD_F_SN_F";
 export type VacationPeriod = { start: string; end: string };
 
 export type Workplace = {
@@ -52,6 +53,7 @@ export type Workplace = {
   cycle_pattern: CyclePattern;
   cycle_start_date: string;
   cycle_start_shift: "SD" | "SN";
+  cycle_repeat_months?: number | null;
   sd_start: string;
   sd_end: string;
   sn_start: string;

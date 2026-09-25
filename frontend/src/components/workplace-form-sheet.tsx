@@ -14,7 +14,7 @@ import BottomSheet, {
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { makeStyles, spacing, radius, useTheme } from "@/src/theme";
 import { api, CyclePattern, VacationPeriod, Workplace } from "@/src/api/client";
-import { brToISO, CYCLE_LABELS, fmtDate, isoToBR } from "@/src/utils/shifts";
+import { brToISO, CYCLE_LABELS, CYCLE_ORDER, fmtDate, isoToBR } from "@/src/utils/shifts";
 
 export type WorkplaceFormSheetRef = { open: (wp: Workplace | null) => void };
 type Props = { onSaved: () => void };
@@ -38,6 +38,7 @@ export const WorkplaceFormSheet = forwardRef<WorkplaceFormSheetRef, Props>(funct
   const [cyclePattern, setCyclePattern] = useState<CyclePattern>("SD_F_SN_F_F");
   const [cycleStart, setCycleStart] = useState(isoToBR(fmtDate(new Date())));
   const [cycleShift, setCycleShift] = useState<"SD" | "SN">("SD");
+  const [cycleRepeatMonths, setCycleRepeatMonths] = useState<number | null>(null);
   const [sdStart, setSdStart] = useState("07:00");
   const [sdEnd, setSdEnd] = useState("19:00");
   const [snStart, setSnStart] = useState("19:00");
@@ -64,6 +65,7 @@ export const WorkplaceFormSheet = forwardRef<WorkplaceFormSheetRef, Props>(funct
         setCyclePattern(wp.cycle_pattern);
         setCycleStart(isoToBR(wp.cycle_start_date));
         setCycleShift(wp.cycle_start_shift);
+        setCycleRepeatMonths(wp.cycle_repeat_months ?? null);
         setSdStart(wp.sd_start);
         setSdEnd(wp.sd_end);
         setSnStart(wp.sn_start);
@@ -79,6 +81,7 @@ export const WorkplaceFormSheet = forwardRef<WorkplaceFormSheetRef, Props>(funct
         setCyclePattern("SD_F_SN_F_F");
         setCycleStart(isoToBR(fmtDate(new Date())));
         setCycleShift("SD");
+        setCycleRepeatMonths(null);
         setSdStart("07:00");
         setSdEnd("19:00");
         setSnStart("19:00");
@@ -135,6 +138,7 @@ export const WorkplaceFormSheet = forwardRef<WorkplaceFormSheetRef, Props>(funct
         cycle_pattern: cyclePattern,
         cycle_start_date: cycleISO || fmtDate(new Date()),
         cycle_start_shift: cycleShift,
+        cycle_repeat_months: cycleRepeatMonths,
         sd_start: sdStart,
         sd_end: sdEnd,
         sn_start: snStart,
@@ -216,7 +220,7 @@ export const WorkplaceFormSheet = forwardRef<WorkplaceFormSheetRef, Props>(funct
         {!isAvulsoOnly ? (
           <>
             <Text style={styles.sectionHead}>Sequência do ciclo</Text>
-            {(Object.keys(CYCLE_LABELS) as CyclePattern[]).map((p) => (
+            {CYCLE_ORDER.map((p) => (
               <Pressable
                 key={p}
                 testID={`wp-pattern-${p}`}
@@ -237,6 +241,38 @@ export const WorkplaceFormSheet = forwardRef<WorkplaceFormSheetRef, Props>(funct
                 <Text style={styles.patternText}>{CYCLE_LABELS[p]}</Text>
               </Pressable>
             ))}
+
+            <Text style={styles.label}>Repetir o ciclo por</Text>
+            <View style={styles.seg}>
+              {([
+                { v: 1, label: "1 mês" },
+                { v: 2, label: "2 meses" },
+                { v: 6, label: "6 meses" },
+                { v: null, label: "Sempre" },
+              ] as const).map((opt) => {
+                const active = cycleRepeatMonths === opt.v;
+                return (
+                  <Pressable
+                    key={String(opt.v)}
+                    testID={`wp-repeat-${opt.v ?? "always"}`}
+                    onPress={() => setCycleRepeatMonths(opt.v)}
+                    style={[
+                      styles.segBtn,
+                      active && { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.segText,
+                        { color: active ? colors.onBrandPrimary : colors.onSurface },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
 
             <Text style={styles.label}>Data de início do ciclo (DD/MM/AAAA)</Text>
             <TextInput

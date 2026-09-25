@@ -437,47 +437,39 @@ export default function CalendarScreen() {
                       styles.dayNum,
                       { color: palette.primaryText },
                       isWeekend && { color: palette.weekendAccent },
+                      (eventsByDate.get(iso) ?? []).some((e) => e.kind === "holiday") && {
+                        color: palette.holidayText,
+                      },
                     ]}
                   >
                     {d.getDate()}
                   </Text>
                   <View style={styles.eventsList}>
-                    {events.slice(0, 4).map((ev, i) => {
-                      if (ev.kind === "holiday") {
-                        return (
-                          <View
-                            key={`h-${i}`}
-                            style={[
-                              styles.holidayChip,
-                              { backgroundColor: palette.holidayBg },
-                            ]}
-                          >
-                            <Text
-                              style={[styles.holidayText, { color: palette.holidayText }]}
-                              numberOfLines={2}
-                            >
-                              {ev.name}
-                            </Text>
-                          </View>
-                        );
-                      }
-                      return (
-                        <View key={`e-${i}`} style={styles.eventRow}>
-                          <View style={[styles.eventBar, { backgroundColor: ev.color }]} />
-                          <Text
-                            style={[styles.eventLabel, { color: palette.primaryText }]}
-                            numberOfLines={1}
-                            adjustsFontSizeToFit
-                            minimumFontScale={0.75}
-                          >
-                            {ev.label}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                    {events.length > 4 ? (
+                    {events
+                      .filter((ev) => ev.kind !== "holiday")
+                      .slice(0, 4)
+                      .map((ev, i) => {
+                        // holidays filtered above
+                        if (ev.kind === "shift" || ev.kind === "extra") {
+                          return (
+                            <View key={`e-${i}`} style={styles.eventRow}>
+                              <View style={[styles.eventBar, { backgroundColor: ev.color }]} />
+                              <Text
+                                style={[styles.eventLabel, { color: palette.primaryText }]}
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.75}
+                              >
+                                {ev.label}
+                              </Text>
+                            </View>
+                          );
+                        }
+                        return null;
+                      })}
+                    {events.filter((e) => e.kind !== "holiday").length > 4 ? (
                       <Text style={[styles.moreText, { color: palette.mutedText }]}>
-                        +{events.length - 4}
+                        +{events.filter((e) => e.kind !== "holiday").length - 4}
                       </Text>
                     ) : null}
                   </View>
@@ -538,33 +530,36 @@ export default function CalendarScreen() {
               return (
                 <View key={`cap-${iso}`} style={styles.captureCell}>
                   <Text
-                    style={[styles.captureDay, isWeekend && { color: colors.error }]}
+                    style={[
+                      styles.captureDay,
+                      isWeekend && { color: colors.error },
+                      events.some((e) => e.kind === "holiday") && { color: "#166534" },
+                    ]}
                   >
                     {d.getDate()}
                   </Text>
-                  {events.slice(0, 4).map((ev, i) => {
-                    if (ev.kind === "holiday") {
-                      return (
-                        <View key={`ch-${i}`} style={styles.captureHoliday}>
-                          <Text style={styles.captureHolidayText} numberOfLines={2}>
-                            {ev.name}
-                          </Text>
-                        </View>
-                      );
-                    }
-                    return (
-                      <View key={`ce-${i}`} style={styles.captureEventRow}>
-                        <View
-                          style={[styles.captureEventBar, { backgroundColor: ev.color }]}
-                        />
-                        <Text style={styles.captureEventLabel} numberOfLines={1}>
-                          {ev.label}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                  {events.length > 4 ? (
-                    <Text style={styles.captureMore}>+{events.length - 4}</Text>
+                  {events
+                    .filter((e) => e.kind !== "holiday")
+                    .slice(0, 4)
+                    .map((ev, i) => {
+                      if (ev.kind === "shift" || ev.kind === "extra") {
+                        return (
+                          <View key={`ce-${i}`} style={styles.captureEventRow}>
+                            <View
+                              style={[styles.captureEventBar, { backgroundColor: ev.color }]}
+                            />
+                            <Text style={styles.captureEventLabel} numberOfLines={1}>
+                              {ev.label}
+                            </Text>
+                          </View>
+                        );
+                      }
+                      return null;
+                    })}
+                  {events.filter((e) => e.kind !== "holiday").length > 4 ? (
+                    <Text style={styles.captureMore}>
+                      +{events.filter((e) => e.kind !== "holiday").length - 4}
+                    </Text>
                   ) : null}
                 </View>
               );

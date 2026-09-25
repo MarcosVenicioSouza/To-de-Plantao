@@ -34,7 +34,14 @@ api_router = APIRouter(prefix="/api")
 
 # ============ Models ============
 ShiftType = Literal['SD', 'SN', 'FOLGA', 'AVULSO', 'FERIAS', 'MANHA', 'TARDE']
-CyclePattern = Literal['SD_F_SN_F_F', 'SD_SN_F_F', 'SD_F_SN_F', 'SD_F_F_SN_F_F', 'SD_F_F_SD_F_F']  # 5-day, 4-day back-to-back, legacy 4-day 12x36, 6-day with double folgas, 6-day same-shift
+CyclePattern = Literal[
+    'SD_F_SN_F_F',
+    'SD_SN_F_F_F',
+    'SD_SN_F_F',
+    'SD_F_F_SN_F_F',
+    'SD_F_F_SD_F_F',
+    'SD_F_SN_F',  # legacy 12x36, kept for existing workplaces
+]
 
 
 class RegisterBody(BaseModel):
@@ -70,6 +77,7 @@ class WorkplaceCreate(BaseModel):
     cycle_pattern: CyclePattern = 'SD_F_SN_F_F'
     cycle_start_date: str
     cycle_start_shift: Literal['SD', 'SN'] = 'SD'
+    cycle_repeat_months: Optional[int] = None  # None=Sempre, 1, 2, or 6
     sd_start: str = '07:00'
     sd_end: str = '19:00'
     sn_start: str = '19:00'
@@ -89,6 +97,7 @@ class WorkplaceUpdate(BaseModel):
     cycle_pattern: Optional[CyclePattern] = None
     cycle_start_date: Optional[str] = None
     cycle_start_shift: Optional[Literal['SD', 'SN']] = None
+    cycle_repeat_months: Optional[int] = None
     sd_start: Optional[str] = None
     sd_end: Optional[str] = None
     sn_start: Optional[str] = None
@@ -110,6 +119,7 @@ class Workplace(BaseModel):
     cycle_pattern: CyclePattern
     cycle_start_date: str
     cycle_start_shift: Literal['SD', 'SN']
+    cycle_repeat_months: Optional[int] = None
     sd_start: str
     sd_end: str
     sn_start: str
@@ -230,6 +240,7 @@ def wp_defaults(doc: dict) -> dict:
     doc.setdefault('tarde_color', '#FF9500')
     doc.setdefault('is_avulso_only', False)
     doc.setdefault('vacations', [])
+    doc.setdefault('cycle_repeat_months', None)
     return doc
 
 
@@ -301,6 +312,7 @@ async def create_workplace(body: WorkplaceCreate, user=Depends(get_current_user)
         'cycle_pattern': body.cycle_pattern,
         'cycle_start_date': body.cycle_start_date,
         'cycle_start_shift': body.cycle_start_shift,
+        'cycle_repeat_months': body.cycle_repeat_months,
         'sd_start': body.sd_start, 'sd_end': body.sd_end,
         'sn_start': body.sn_start, 'sn_end': body.sn_end,
         'shift_day_color': body.shift_day_color,

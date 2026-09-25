@@ -15,25 +15,38 @@ export type ShiftInfo = {
 // "first" and "opposite" are resolved by wp.cycle_start_shift (SD or SN).
 type Slot = "FIRST" | "OPPOSITE" | "FOLGA";
 export const CYCLE_PATTERNS: Record<CyclePattern, Slot[]> = {
-  // SD Folga SN Folga Folga (5 dias) — novo padrão
+  // SD Folga SN Saída Folga (5 dias, 36h/sem)
   SD_F_SN_F_F: ["FIRST", "FOLGA", "OPPOSITE", "FOLGA", "FOLGA"],
-  // SD SN Folga Folga (4 dias, sem folga entre)
+  // SD SN Saída Folga Folga (5 dias, 36h/sem)
+  SD_SN_F_F_F: ["FIRST", "OPPOSITE", "FOLGA", "FOLGA", "FOLGA"],
+  // SD SN Saída Folga (4 dias, 44h/sem)
   SD_SN_F_F: ["FIRST", "OPPOSITE", "FOLGA", "FOLGA"],
-  // 12x36 clássico
-  SD_F_SN_F: ["FIRST", "FOLGA", "OPPOSITE", "FOLGA"],
-  // SD Folga Folga SN Folga Folga (6 dias)
+  // SD Folga Folga SN Saída Folga (6 dias, 30h/sem)
   SD_F_F_SN_F_F: ["FIRST", "FOLGA", "FOLGA", "OPPOSITE", "FOLGA", "FOLGA"],
-  // SD Folga Folga SD Folga Folga (6 dias, mesmo turno duas vezes)
+  // SD Folga Folga SD Folga Folga (6 dias, 30h/sem)
   SD_F_F_SD_F_F: ["FIRST", "FOLGA", "FOLGA", "FIRST", "FOLGA", "FOLGA"],
+  // Legacy 12x36
+  SD_F_SN_F: ["FIRST", "FOLGA", "OPPOSITE", "FOLGA"],
 };
 
 export const CYCLE_LABELS: Record<CyclePattern, string> = {
-  SD_F_SN_F_F: "5 dias: SD → Folga → SN → Folga → Folga",
-  SD_SN_F_F: "4 dias: SD → SN → Folga → Folga",
-  SD_F_SN_F: "4 dias (12x36): SD → Folga → SN → Folga",
-  SD_F_F_SN_F_F: "6 dias: SD → Folga → Folga → SN → Folga → Folga",
-  SD_F_F_SD_F_F: "6 dias: SD → Folga → Folga → SD → Folga → Folga",
+  SD_F_SN_F_F: "36h = SD → Folga → SN → Saída → Folga",
+  SD_SN_F_F_F: "36h = SD → SN → Saída → Folga → Folga",
+  SD_SN_F_F: "44h = SD → SN → Saída → Folga",
+  SD_F_F_SN_F_F: "30h = SD → Folga → Folga → SN → Saída → Folga",
+  SD_F_F_SD_F_F: "30h = SD → Folga → Folga → SD → Folga → Folga",
+  SD_F_SN_F: "12x36 = SD → Folga → SN → Folga",
 };
+
+// Order to render in the workplace form; note SD_F_SN_F (legacy) is intentionally last.
+export const CYCLE_ORDER: CyclePattern[] = [
+  "SD_F_SN_F_F",
+  "SD_SN_F_F_F",
+  "SD_SN_F_F",
+  "SD_F_F_SN_F_F",
+  "SD_F_F_SD_F_F",
+  "SD_F_SN_F",
+];
 
 // -------- date helpers --------
 export function fmtDate(d: Date): string {
@@ -72,6 +85,11 @@ export function daysBetween(a: Date, b: Date): number {
 export function computeCycleShift(date: Date, wp: Workplace): ShiftType {
   const pattern = CYCLE_PATTERNS[wp.cycle_pattern] ?? CYCLE_PATTERNS.SD_F_SN_F_F;
   const start = parseISODate(wp.cycle_start_date);
+  const repeat = wp.cycle_repeat_months;
+  if (repeat && repeat > 0) {
+    const end = new Date(start.getFullYear(), start.getMonth() + repeat, start.getDate());
+    if (date >= end || date < start) return "FOLGA";
+  }
   const diff = daysBetween(start, date);
   const pos = ((diff % pattern.length) + pattern.length) % pattern.length;
   const slot = pattern[pos];

@@ -1,0 +1,36 @@
+{
+  "summary": "Backend-only regression + new-feature verification for EscalaFácil. Verified new CyclePattern 'SD_SN_F_F_F' is accepted and echoed by POST /api/workplaces; the new optional field `cycle_repeat_months` round-trips correctly (None when omitted, echoed on create with value 2, updatable to 6 via PUT, and correctly returned by GET /api/workplaces for both workplaces). Bogus cycle_pattern 'XYZ' rejected with 422. Regression: all 5 previously supported patterns (SD_F_SN_F_F, SD_SN_F_F, SD_F_F_SN_F_F, SD_F_F_SD_F_F, SD_F_SN_F) still 201; shift-override upserts across all 7 shift types (SD, SN, MANHA, TARDE, AVULSO, FOLGA, FERIAS) plus delete, holidays CRUD, events CRUD, and account soft-deletion (with e-mail reuse) all pass. 23/23 tests green against the public preview URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_cycle_repeat_months.py",
+    "/app/test_reports/pytest/pytest_cycle_repeat_months.xml"
+  ],
+  "action_items": [
+    "No product bugs. Optional: FastAPI @app.on_event('startup'|'shutdown') in server.py is deprecated — migrate to lifespan handlers when convenient (non-blocking)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:37-44 CyclePattern Literal correctly extended with 'SD_SN_F_F_F'; Pydantic validation returns 422 for unknown values on both POST and PUT.",
+    "server.py:80,100,122 cycle_repeat_months added as Optional[int] on WorkplaceCreate/Update/Workplace with default None — round-trips to Mongo verified via GET.",
+    "server.py:236-244 wp_defaults backfills cycle_repeat_months=None for legacy docs, keeping GET stable for pre-existing rows.",
+    "server.py:337-347 PUT update_workplace skips None values before $set — matches spec 'None means always', so clients must send null-clearing via a different mechanism if ever needed (current requirement doesn't need this).",
+    "Note: cycle_repeat_months is typed Optional[int] without a Literal[1,2,6] constraint, so any int (e.g. 3, -1) would be accepted server-side. If the domain truly only supports 1/2/6/null, consider constraining to Literal[1,2,6] or adding a validator. Not tested as a bug since the review request didn't specify server-side rejection of other ints."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_cycle_repeat_months.py (new)"
+  ],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "not tested (backend-only per request)"},
+  "seed_data_creation": "Reused demo@escalafacil.com/demo123456 via register-then-login fallback. All test workplaces prefixed TEST_ and cleaned up in a module-scoped autouse teardown. Account-deletion test uses a fresh unique email each run and self-cleans.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_cycle_repeat_months.py -v -n 0 (NOT -p no:xdist; pytest.ini's addopts already injects -n/--dist so use -n 0 for serial). Public URL from EXPO_PUBLIC_BACKEND_URL. Existing companion suite: test_cycle_patterns.py still valid. cycle_repeat_months accepted values per spec: null, 1, 2, 6 — but server currently does NOT constrain int values, so extra values would slip through.",
+  "rca_of_issue": "N/A — no bug."
+}
