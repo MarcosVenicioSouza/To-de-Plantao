@@ -9,7 +9,6 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
-import { Link } from "expo-router";
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { makeStyles, spacing, radius, useTheme } from "@/src/theme";
@@ -59,8 +58,8 @@ export default function LoginScreen() {
             <View style={styles.logo}>
               <Ionicons name="calendar" size={30} color={colors.onBrandPrimary} />
             </View>
-            <Text style={styles.title}>EscalaFácil</Text>
-            <Text style={styles.subtitle}>Sua escala 12x36 organizada</Text>
+            <Text style={styles.title}>Tô de Plantão</Text>
+            <Text style={styles.subtitle}>Sua escala de plantões organizada</Text>
           </View>
 
           <View style={styles.form}>
@@ -117,12 +116,9 @@ export default function LoginScreen() {
             </Pressable>
 
             <View style={styles.footer}>
-              <Text style={styles.footerText}>Não tem conta? </Text>
-              <Link href="/(auth)/register" asChild>
-                <Pressable testID="go-register-link">
-                  <Text style={styles.footerLink}>Cadastre-se</Text>
-                </Pressable>
-              </Link>
+              <Text style={styles.footerText}>
+                Acesso restrito. Fale com o administrador se você ainda não tem cadastro.
+              </Text>
             </View>
           </View>
         </ScrollView>
@@ -182,7 +178,6 @@ const useStyles = makeStyles((colors) => ({
   },
   btnPressed: { opacity: 0.85 },
   btnText: { color: colors.onBrandPrimary, fontSize: 16, fontWeight: "700" },
-  footer: { flexDirection: "row", justifyContent: "center", marginTop: spacing.xl },
-  footerText: { color: colors.muted },
-  footerLink: { color: colors.brandPrimary, fontWeight: "600" },
+  footer: { marginTop: spacing.xl, alignItems: "center" },
+  footerText: { color: colors.muted, fontSize: 13, textAlign: "center", lineHeight: 18 },
 }));
