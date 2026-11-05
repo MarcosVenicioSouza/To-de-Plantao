@@ -485,6 +485,7 @@ async def on_startup():
             [('user_id', 1), ('workplace_id', 1), ('date', 1)], unique=True
         )
         await db.holidays.create_index([('user_id', 1), ('date', 1)])
+        await db.extra_events.create_index([('user_id', 1), ('date', 1)])
     except Exception as e:
         logger.warning(f'index warn: {e}')
 
