@@ -12,7 +12,6 @@ import { queryClient } from "@/src/query-client";
 import { AuthProvider, useAuth } from "@/src/contexts/auth";
 import { WorkplacesProvider } from "@/src/contexts/workplaces";
 import { PaletteProvider } from "@/src/palettes";
-import "@/src/utils/web-alert";
 
 LogBox.ignoreAllLogs(true);
 

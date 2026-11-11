@@ -7,6 +7,7 @@ import { makeStyles, spacing, radius, useTheme } from "@/src/theme";
 import { useAuth } from "@/src/contexts/auth";
 import { useWorkplaces } from "@/src/contexts/workplaces";
 import { api } from "@/src/api/client";
+import { computeCycleShift, fmtDate, shiftDefaultHours } from "@/src/utils/shifts";
 import { useRouter } from "expo-router";
 import { PALETTES, PaletteId, usePalette } from "@/src/palettes";
 import {
@@ -14,85 +15,85 @@ import {
   ensureNotificationsReady,
   scheduleShiftReminder,
 } from "@/src/utils/notifications";
-import { buildReminders } from "@/src/utils/reminders";
-import {
-  disableWebPush,
-  requestWebPushPermission,
-  sendWebPushTest,
-  syncWebPush,
-  webPushStatus,
-} from "@/src/utils/web-push";
-import { importLegacyData } from "@/src/utils/legacy-import";
 
 const NOTIF_KEY = "escala_notif_enabled";
-const isWeb = Platform.OS === "web";
 
 export default function PerfilScreen() {
   const insets = useSafeAreaInsets();
   const styles = useStyles();
   const { colors } = useTheme();
   const { user, logout } = useAuth();
-  const { workplaces, refresh: refreshWorkplaces } = useWorkplaces();
+  const { current, workplaces } = useWorkplaces();
   const router = useRouter();
   const { paletteId, setPaletteId } = usePalette();
   const [notifOn, setNotifOn] = useState(false);
   const [scheduling, setScheduling] = useState(false);
-  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem(NOTIF_KEY).then((v) => setNotifOn(v === "1"));
   }, []);
 
-  const askPermission = async (): Promise<boolean> => {
-    if (!isWeb) return ensureNotificationsReady();
-    const status = webPushStatus();
-    if (status === "needs-install") {
-      Alert.alert(
-        "Instale o app primeiro",
-        "No iPhone, os avisos só funcionam com o app instalado: toque em Compartilhar → \"Adicionar à Tela de Início\" e abra o Tô de Plantão por lá."
-      );
-      return false;
-    }
-    if (status === "unsupported") {
-      Alert.alert("Indisponível", "Este navegador não suporta avisos. Use o Chrome (Android) ou o app instalado no iPhone.");
-      return false;
-    }
-    if (status === "denied") {
-      Alert.alert("Avisos bloqueados", "Libere as notificações deste site nas configurações do navegador e tente de novo.");
-      return false;
-    }
-    return requestWebPushPermission();
-  };
-
   const toggleNotif = async (v: boolean) => {
     if (v) {
-      const granted = await askPermission();
-      if (!granted) return;
+      if (Platform.OS === "web") {
+        Alert.alert("Indisponível", "Notificações locais funcionam no dispositivo (iOS/Android).");
+        return;
+      }
+      const granted = await ensureNotificationsReady();
+      if (!granted) {
+        Alert.alert("Permissão negada", "Habilite notificações nas configurações do sistema.");
+        return;
+      }
       await AsyncStorage.setItem(NOTIF_KEY, "1");
       setNotifOn(true);
-      await rescheduleAll(true);
+      await rescheduleAll();
     } else {
-      try {
-        if (isWeb) await disableWebPush();
-        else await cancelAllReminders();
-      } catch {}
+      await cancelAllReminders();
       await AsyncStorage.setItem(NOTIF_KEY, "0");
       setNotifOn(false);
     }
   };
 
-  const rescheduleAll = async (sendTest = false) => {
+  const rescheduleAll = async () => {
+    if (Platform.OS === "web") return;
     setScheduling(true);
     try {
-      const reminders = await buildReminders(workplaces);
+      await cancelAllReminders();
+      const now = new Date();
       let count = 0;
-      if (isWeb) {
-        count = await syncWebPush(reminders);
-        if (sendTest) await sendWebPushTest();
-      } else {
-        await cancelAllReminders();
-        for (const r of reminders) {
-          if (await scheduleShiftReminder(r.at, r.title, r.body)) count++;
+      // Schedule the next 60 days across all workplaces.
+      for (const wp of workplaces) {
+        const months = new Set<string>();
+        for (let i = 0; i < 60; i++) {
+          const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+          months.add(`${d.getFullYear()}-${d.getMonth() + 1}`);
+        }
+        const overrideList = [] as Awaited<ReturnType<typeof api.listOverrides>>;
+        for (const key of months) {
+          const [y, m] = key.split("-").map(Number);
+          const arr = await api.listOverrides(wp.id, y, m).catch(() => []);
+          overrideList.push(...arr);
+        }
+        const ovMap = new Map(overrideList.map((o) => [o.date, o]));
+        for (let i = 0; i < 60; i++) {
+          const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+          const iso = fmtDate(d);
+          const o = ovMap.get(iso);
+          const t = o ? o.shift_type : computeCycleShift(d, wp);
+          if (t === "FOLGA" || t === "FERIAS") continue;
+          const h = o
+            ? { start: o.start_time, end: o.end_time }
+            : shiftDefaultHours(t, wp);
+          if (!h.start) continue;
+          const [hh, mm] = h.start.split(":").map((v) => parseInt(v, 10));
+          const trigger = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm);
+          trigger.setHours(trigger.getHours() - 1);
+          const id = await scheduleShiftReminder(
+            trigger,
+            `Plantão ${t} em 1h`,
+            `${wp.name} • ${h.start} — ${h.end}`
+          );
+          if (id) count++;
         }
       }
       Alert.alert("Pronto", `${count} lembretes agendados para os próximos 60 dias.`);
@@ -100,35 +101,6 @@ export default function PerfilScreen() {
       Alert.alert("Erro", e.message ?? "Não foi possível agendar");
     } finally {
       setScheduling(false);
-    }
-  };
-
-  const confirmImport = () => {
-    Alert.alert(
-      "Importar dados antigos",
-      "Vamos trazer os locais, plantões, feriados e eventos cadastrados na versão anterior do app com este mesmo e-mail. Pode repetir sem duplicar.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Importar", onPress: runImport },
-      ]
-    );
-  };
-
-  const runImport = async () => {
-    setImporting(true);
-    try {
-      const r = await importLegacyData();
-      await refreshWorkplaces();
-      Alert.alert(
-        r.found ? "Importação concluída" : "Nada encontrado",
-        r.found
-          ? `${r.workplaces} locais, ${r.shifts} alterações de plantão, ${r.holidays} feriados e ${r.events} eventos importados.`
-          : "Não há dados antigos cadastrados com este e-mail."
-      );
-    } catch (e: any) {
-      Alert.alert("Erro", e.message ?? "Não foi possível importar");
-    } finally {
-      setImporting(false);
     }
   };
 
@@ -169,14 +141,10 @@ export default function PerfilScreen() {
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xxl }}>
         <View style={styles.userCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {(user?.name?.[0] ?? user?.email?.[0] ?? "?").toUpperCase()}
-            </Text>
+            <Text style={styles.avatarText}>{user?.name?.[0]?.toUpperCase() ?? "?"}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text testID="profile-name" style={styles.userName}>
-              {user?.name ?? user?.email?.split("@")[0] ?? ""}
-            </Text>
+            <Text testID="profile-name" style={styles.userName}>{user?.name}</Text>
             <Text testID="profile-email" style={styles.userEmail}>{user?.email}</Text>
           </View>
         </View>
@@ -241,7 +209,7 @@ export default function PerfilScreen() {
           <Pressable
             testID="notif-refresh"
             style={styles.rowAction}
-            onPress={() => rescheduleAll()}
+            onPress={rescheduleAll}
             disabled={scheduling}
           >
             <Ionicons name="refresh-outline" size={20} color={colors.brandPrimary} />
@@ -251,34 +219,8 @@ export default function PerfilScreen() {
           </Pressable>
         ) : null}
 
-        <Pressable
-          testID="import-legacy-button"
-          style={[styles.rowCard, { marginTop: spacing.sm }]}
-          onPress={confirmImport}
-          disabled={importing}
-        >
-          <Ionicons name="cloud-download-outline" size={22} color={colors.onSurface} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.rowTitle}>{importing ? "Importando…" : "Importar dados antigos"}</Text>
-            <Text style={styles.rowBody}>Trazer sua escala da versão anterior do app</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-        </Pressable>
-
         <Text style={styles.sectionHead}>Conta</Text>
-        <Pressable
-          testID="change-password-button"
-          style={styles.rowCard}
-          onPress={() => router.push("/alterar-senha")}
-        >
-          <Ionicons name="key-outline" size={22} color={colors.onSurface} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.rowTitle}>Alterar senha</Text>
-            <Text style={styles.rowBody}>Defina uma nova senha quando quiser</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-        </Pressable>
-        <Pressable testID="logout-button" style={[styles.rowCard, { marginTop: spacing.sm }]} onPress={confirmLogout}>
+        <Pressable testID="logout-button" style={styles.rowCard} onPress={confirmLogout}>
           <Ionicons name="log-out-outline" size={22} color={colors.error} />
           <Text style={[styles.rowTitle, { color: colors.error, flex: 1 }]}>Sair da conta</Text>
         </Pressable>

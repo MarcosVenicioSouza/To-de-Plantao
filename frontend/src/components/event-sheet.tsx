@@ -20,7 +20,7 @@ const COLORS = [
   "#AF52DE", "#FF2D55", "#00A5B8", "#8E4EC6", "#32827A",
 ];
 
-export const EventSheet = forwardRef<EventSheetRef, Props>(function EventSheet({ onSaved }, ref) {
+export const EventSheet = forwardRef<EventSheetRef, Props>(function ({ onSaved }, ref) {
   const styles = useStyles();
   const { colors } = useTheme();
   const sheetRef = useRef<BottomSheet>(null);

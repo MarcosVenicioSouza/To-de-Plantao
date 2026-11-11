@@ -24,7 +24,7 @@ type OpenArgs = {
 
 export type DayActionsSheetRef = { open: (args: OpenArgs) => void; close: () => void };
 
-export const DayActionsSheet = forwardRef<DayActionsSheetRef>(function DayActionsSheet(_, ref) {
+export const DayActionsSheet = forwardRef<DayActionsSheetRef>(function (_, ref) {
   const styles = useStyles();
   const { colors } = useTheme();
   const sheetRef = useRef<BottomSheet>(null);

@@ -24,7 +24,7 @@ const COLOR_SWATCHES = [
   "#AF52DE", "#FF2D55", "#34C759", "#00A5B8", "#8E4EC6",
 ];
 
-export const WorkplaceFormSheet = forwardRef<WorkplaceFormSheetRef, Props>(function WorkplaceFormSheet(
+export const WorkplaceFormSheet = forwardRef<WorkplaceFormSheetRef, Props>(function (
   { onSaved },
   ref
 ) {

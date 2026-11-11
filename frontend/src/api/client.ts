@@ -1,6 +1,40 @@
-// Supabase-backed data client for Tô de Plantão.
-// Keeps the same function names used throughout the app.
-import { supabase } from "@/src/lib/supabase";
+// API client for EscalaFácil backend.
+import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
+
+const RAW = process.env.EXPO_PUBLIC_BACKEND_URL ?? "";
+export const API_BASE = `${RAW.replace(/\/$/, "")}/api`;
+
+const TOKEN_KEY = "escala_token";
+
+const storage = {
+  async get(): Promise<string | null> {
+    if (Platform.OS === "web") {
+      try {
+        return globalThis.localStorage?.getItem(TOKEN_KEY) ?? null;
+      } catch {
+        return null;
+      }
+    }
+    return SecureStore.getItemAsync(TOKEN_KEY);
+  },
+  async set(v: string) {
+    if (Platform.OS === "web") {
+      globalThis.localStorage?.setItem(TOKEN_KEY, v);
+      return;
+    }
+    await SecureStore.setItemAsync(TOKEN_KEY, v);
+  },
+  async remove() {
+    if (Platform.OS === "web") {
+      globalThis.localStorage?.removeItem(TOKEN_KEY);
+      return;
+    }
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  },
+};
+
+export const tokenStore = storage;
 
 export type CyclePattern =
   | "SD_F_SN_F_F"
@@ -63,186 +97,63 @@ export type ExtraEvent = {
 };
 export type User = { id: string; name: string; email: string };
 
-async function currentUserId(): Promise<string> {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error("Não autenticado");
-  return data.user.id;
-}
-
-function monthRange(year: number, month: number): { start: string; end: string } {
-  const mm = String(month).padStart(2, "0");
-  const start = `${year}-${mm}-01`;
-  const nextMonth = month === 12 ? 1 : month + 1;
-  const nextYear = month === 12 ? year + 1 : year;
-  const end = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
-  return { start, end };
-}
-
-function unwrap<T>(res: { data: T | null; error: any }): T {
-  if (res.error) throw new Error(res.error.message ?? "Erro no banco");
-  if (res.data === null) throw new Error("Sem dados");
-  return res.data;
+async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = await storage.get();
+  const headers = new Headers(init.headers);
+  headers.set("Content-Type", "application/json");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const r = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const text = await r.text();
+  const data = text ? (() => { try { return JSON.parse(text); } catch { return {}; } })() : {};
+  if (!r.ok) {
+    const msg = (data && (data.detail || data.message)) || `Erro ${r.status}`;
+    throw new Error(typeof msg === "string" ? msg : "Erro na requisição");
+  }
+  return data as T;
 }
 
 export const api = {
-  // ---- Workplaces ----
-  listWorkplaces: async (): Promise<Workplace[]> => {
-    const uid = await currentUserId();
-    const res = await supabase
-      .from("workplaces")
-      .select("*")
-      .eq("user_id", uid)
-      .order("created_at", { ascending: true });
-    return unwrap(res) ?? [];
-  },
-  createWorkplace: async (body: Partial<Workplace>): Promise<Workplace> => {
-    const uid = await currentUserId();
-    const payload: any = { ...body, user_id: uid };
-    delete payload.id;
-    delete payload.created_at;
-    const res = await supabase.from("workplaces").insert(payload).select().single();
-    return unwrap(res);
-  },
-  updateWorkplace: async (id: string, body: Partial<Workplace>): Promise<Workplace> => {
-    const payload: any = { ...body };
-    delete payload.id;
-    delete payload.user_id;
-    delete payload.created_at;
-    const res = await supabase
-      .from("workplaces")
-      .update(payload)
-      .eq("id", id)
-      .select()
-      .single();
-    return unwrap(res);
-  },
-  deleteWorkplace: async (id: string): Promise<void> => {
-    const res = await supabase.from("workplaces").delete().eq("id", id);
-    if (res.error) throw new Error(res.error.message);
-  },
+  register: (name: string, email: string, password: string) =>
+    req<{ access_token: string }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ name, email, password }),
+    }),
+  login: (email: string, password: string) =>
+    req<{ access_token: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  me: () => req<User>("/auth/me"),
+  deleteMe: () => req<void>("/auth/me", { method: "DELETE" }),
 
-  // ---- Shift overrides ----
-  listOverrides: async (
-    wid: string,
-    year: number,
-    month: number
-  ): Promise<ShiftOverride[]> => {
-    const uid = await currentUserId();
-    const { start, end } = monthRange(year, month);
-    const res = await supabase
-      .from("shift_overrides")
-      .select("*")
-      .eq("user_id", uid)
-      .eq("workplace_id", wid)
-      .gte("date", start)
-      .lt("date", end);
-    return unwrap(res) ?? [];
-  },
-  saveOverride: async (
-    wid: string,
-    date: string,
-    body: Partial<ShiftOverride>
-  ): Promise<ShiftOverride> => {
-    const uid = await currentUserId();
-    const payload: any = {
-      user_id: uid,
-      workplace_id: wid,
-      date,
-      shift_type: body.shift_type,
-      start_time: body.start_time ?? null,
-      end_time: body.end_time ?? null,
-      note: body.note ?? null,
-      swap_with: body.swap_with ?? null,
-      updated_at: new Date().toISOString(),
-    };
-    const res = await supabase
-      .from("shift_overrides")
-      .upsert(payload, { onConflict: "user_id,workplace_id,date" })
-      .select()
-      .single();
-    return unwrap(res);
-  },
-  deleteOverride: async (wid: string, date: string): Promise<void> => {
-    const uid = await currentUserId();
-    const res = await supabase
-      .from("shift_overrides")
-      .delete()
-      .eq("user_id", uid)
-      .eq("workplace_id", wid)
-      .eq("date", date);
-    if (res.error) throw new Error(res.error.message);
-  },
+  listWorkplaces: () => req<Workplace[]>("/workplaces"),
+  createWorkplace: (b: Partial<Workplace>) =>
+    req<Workplace>("/workplaces", { method: "POST", body: JSON.stringify(b) }),
+  updateWorkplace: (id: string, b: Partial<Workplace>) =>
+    req<Workplace>(`/workplaces/${id}`, { method: "PUT", body: JSON.stringify(b) }),
+  deleteWorkplace: (id: string) =>
+    req<void>(`/workplaces/${id}`, { method: "DELETE" }),
 
-  // ---- Holidays ----
-  listHolidays: async (): Promise<Holiday[]> => {
-    const uid = await currentUserId();
-    const res = await supabase
-      .from("holidays")
-      .select("*")
-      .eq("user_id", uid)
-      .order("date", { ascending: true });
-    return unwrap(res) ?? [];
-  },
-  createHoliday: async (date: string, name: string): Promise<Holiday> => {
-    const uid = await currentUserId();
-    const res = await supabase
-      .from("holidays")
-      .insert({ user_id: uid, date, name })
-      .select()
-      .single();
-    return unwrap(res);
-  },
-  deleteHoliday: async (id: string): Promise<void> => {
-    const res = await supabase.from("holidays").delete().eq("id", id);
-    if (res.error) throw new Error(res.error.message);
-  },
+  listOverrides: (wid: string, year: number, month: number) =>
+    req<ShiftOverride[]>(`/shifts/${wid}?year=${year}&month=${month}`),
+  saveOverride: (wid: string, date: string, body: Partial<ShiftOverride>) =>
+    req<ShiftOverride>(`/shifts/${wid}/${date}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteOverride: (wid: string, date: string) =>
+    req<void>(`/shifts/${wid}/${date}`, { method: "DELETE" }),
 
-  // ---- Extra events ----
-  listEvents: async (year: number, month: number): Promise<ExtraEvent[]> => {
-    const uid = await currentUserId();
-    const { start, end } = monthRange(year, month);
-    const res = await supabase
-      .from("extra_events")
-      .select("*")
-      .eq("user_id", uid)
-      .gte("date", start)
-      .lt("date", end)
-      .order("date", { ascending: true });
-    return unwrap(res) ?? [];
-  },
-  createEvent: async (body: Partial<ExtraEvent>): Promise<ExtraEvent> => {
-    const uid = await currentUserId();
-    const payload: any = { ...body, user_id: uid };
-    delete payload.id;
-    delete payload.created_at;
-    const res = await supabase.from("extra_events").insert(payload).select().single();
-    return unwrap(res);
-  },
-  updateEvent: async (id: string, body: Partial<ExtraEvent>): Promise<ExtraEvent> => {
-    const payload: any = { ...body };
-    delete payload.id;
-    delete payload.user_id;
-    delete payload.created_at;
-    const res = await supabase
-      .from("extra_events")
-      .update(payload)
-      .eq("id", id)
-      .select()
-      .single();
-    return unwrap(res);
-  },
-  deleteEvent: async (id: string): Promise<void> => {
-    const res = await supabase.from("extra_events").delete().eq("id", id);
-    if (res.error) throw new Error(res.error.message);
-  },
+  listHolidays: () => req<Holiday[]>("/holidays"),
+  createHoliday: (date: string, name: string) =>
+    req<Holiday>("/holidays", { method: "POST", body: JSON.stringify({ date, name }) }),
+  deleteHoliday: (id: string) => req<void>(`/holidays/${id}`, { method: "DELETE" }),
 
-  // ---- Account self-delete (wipes own rows; auth row removed by admin) ----
-  deleteMe: async (): Promise<void> => {
-    const uid = await currentUserId();
-    await supabase.from("extra_events").delete().eq("user_id", uid);
-    await supabase.from("shift_overrides").delete().eq("user_id", uid);
-    await supabase.from("holidays").delete().eq("user_id", uid);
-    await supabase.from("workplaces").delete().eq("user_id", uid);
-    await supabase.auth.signOut();
-  },
+  listEvents: (year: number, month: number) =>
+    req<ExtraEvent[]>(`/events?year=${year}&month=${month}`),
+  createEvent: (body: Partial<ExtraEvent>) =>
+    req<ExtraEvent>("/events", { method: "POST", body: JSON.stringify(body) }),
+  updateEvent: (id: string, body: Partial<ExtraEvent>) =>
+    req<ExtraEvent>(`/events/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteEvent: (id: string) => req<void>(`/events/${id}`, { method: "DELETE" }),
 };

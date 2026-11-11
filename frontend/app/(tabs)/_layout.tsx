@@ -3,11 +3,9 @@ import { Platform } from "react-native";
 import { Tabs } from "expo-router";
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { useTheme } from "@/src/theme";
-import { useAutoReminders } from "@/src/utils/use-auto-reminders";
 
 export default function TabsLayout() {
   const { colors } = useTheme();
-  useAutoReminders();
   return (
     <Tabs
       screenOptions={{
